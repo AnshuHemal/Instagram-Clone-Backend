@@ -18,10 +18,21 @@ NestJS API (this service)
     └── Cloudinary ──────────── stores videos, transcodes HLS, serves via CDN
 ```
 
-**Zero-delay reel playback** is achieved by:
-1. **HLS streaming** — video plays before fully downloaded
-2. **Predictive pre-fetch** — client downloads next 2-3 reels in background
-3. **Cloudinary CDN** — 200+ global edge nodes serve video from nearby location
+**Zero-delay reel playback & recommendation feed** is achieved by:
+1. **HLS streaming** — video plays before fully downloaded.
+2. **Predictive pre-fetch** — client pre-warms and downloads adjacent reels in the background.
+3. **Cloudinary CDN** — 200+ global edge nodes serve video from nearby locations.
+4. **Session-Randomized Feed** — stable, randomized recommendation algorithm using Redis session caching of shuffled ID lists (preventing duplicates/skips across pagination).
+
+---
+
+## Session-Randomized Feed Architecture
+
+To mirror Instagram's feed recommendations:
+1. **Initial Request (no cursor / refresh)**: The backend fetches all ready Reel IDs from the database, shuffles them in-memory (using a Fisher-Yates algorithm), and caches the randomized ID array in Upstash Redis (keyed by `feed:random:ids:${userId}`) for 10 minutes.
+2. **Slicing**: The first page is sliced from the array and returned, with the next array index (e.g. `"8"`) set as the `nextCursor`.
+3. **Paging Requests**: The frontend sends back the offset index as the cursor. The backend retrieves the cached array from Redis, slices the next segment, queries detailed Reel rows from the database using a performant `id IN (...)` index lookup, sorts them to preserve the randomized order, and returns them.
+4. **Stability**: This locks in a consistent random feed per session, eliminating duplicates and skipping of reels as the user scrolls, while ensuring a fresh random feed on every page reload/refresh.
 
 ---
 
@@ -64,7 +75,7 @@ http://localhost:3000/docs
 | `GET`  | `/api/health` | Health check |
 | `POST` | `/api/reels/upload-signature` | Generate Cloudinary signed upload params |
 | `POST` | `/api/reels` | Create reel record (after Cloudinary upload) |
-| `GET`  | `/api/reels/feed?cursor=&limit=10` | Cursor-paginated reel feed |
+| `GET`  | `/api/reels/feed?cursor=&limit=10` | Session-randomized paginated feed |
 | `GET`  | `/api/reels/:id` | Get single reel |
 | `POST` | `/api/reels/:id/like` | Toggle like |
 | `POST` | `/api/reels/:id/view` | Record view event |
@@ -119,7 +130,7 @@ http://localhost:3000/docs
 
 | Cache Key | TTL | Contents |
 |-----------|-----|----------|
-| `feed:global:{cursor}` | 5 min | Paginated feed array |
+| `feed:random:ids:{userId}` | 10 min | Array of randomized Reel IDs shuffled per session |
 | `reel:meta:{id}` | 30 min | Full reel object |
 | `reel:pending_views:{id}` | ephemeral | Pending view count (flushed every 30s) |
 | `user:liked:{userId}:{reelId}` | 60s | User's like state |
