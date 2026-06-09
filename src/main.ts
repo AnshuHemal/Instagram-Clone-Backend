@@ -111,7 +111,7 @@ export async function bootstrap(expressInstance: express.Express) {
   return { app, port, apiPrefix, nodeEnv };
 }
 
-// Support running locally (NestJS server) or serverless (Vercel)
+// Support running locally (NestJS server)
 if (!process.env.VERCEL) {
   const localServer = express();
   bootstrap(localServer).then(({ port, apiPrefix, nodeEnv }) => {
@@ -121,13 +121,4 @@ if (!process.env.VERCEL) {
       console.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
     });
   });
-}
-
-// Export the serverless function handler for Vercel
-export default async function handler(req: any, res: any) {
-  if (!cachedServer) {
-    cachedServer = express();
-    await bootstrap(cachedServer);
-  }
-  return cachedServer(req, res);
 }
