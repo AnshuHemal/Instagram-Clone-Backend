@@ -1,0 +1,158 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma Schema — Instagram Reels Backend
+// Database: Neon DB (serverless PostgreSQL)
+// ORM:      Prisma 5
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL") // Optional: for prisma migrate (non-pooled)
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum ReelStatus {
+  PROCESSING // Cloudinary is transcoding
+  READY      // HLS URL is available, reel is live
+  FAILED     // Transcoding failed
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+/// Represents a user account.
+/// Auth is handled externally (JWT); this table stores profile data only.
+model User {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String    @unique @db.VarChar(30)
+  email        String    @unique
+  phone        String?   @unique @db.VarChar(20)
+  passwordHash String?   @db.VarChar(255)
+  birthday     DateTime?
+  displayName  String    @db.VarChar(50)
+  avatarUrl    String?
+  bio          String?   @db.VarChar(150)
+  isVerified   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  reels     Reel[]
+  likes     ReelLike[]
+  views     ReelView[]
+  followers Follow[]   @relation("following")
+  following Follow[]   @relation("follower")
+
+  @@index([username])
+}
+
+/// A Reel video post.
+/// The actual video is stored in Cloudinary. We store only metadata + CDN URLs.
+model Reel {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String     @db.Uuid
+  caption            String?    @db.VarChar(2200)
+  audioName          String?    @db.VarChar(100)
+  hashtags           String[]   @default([])
+
+  // ── Cloudinary fields ──────────────────────────────────────────────────────
+  /// Cloudinary public_id — used to build CDN URLs and manage the asset.
+  cloudinaryPublicId String?    @unique
+  /// Cloudinary master HLS playlist URL (the .m3u8 file)
+  hlsUrl             String?
+  /// Cloudinary CDN URL to auto-generated thumbnail (JPEG)
+  thumbnailUrl       String?
+  /// Video duration in seconds (set by Cloudinary webhook)
+  durationSeconds    Float?
+
+  // ── Engagement counts ──────────────────────────────────────────────────────
+  /// Persisted to DB in 30-second batch flushes from Redis
+  viewsCount         BigInt     @default(0)
+  likesCount         BigInt     @default(0)
+  commentsCount      Int        @default(0)
+  sharesCount        Int        @default(0)
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  status             ReelStatus @default(PROCESSING)
+  isDeleted          Boolean    @default(false)
+
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes    ReelLike[]
+  views    ReelView[]
+  comments ReelComment[]
+
+  // Optimized indexes for feed queries
+  @@index([status, createdAt(sort: Desc), id]) // Feed query
+  @@index([userId, createdAt(sort: Desc)])      // User profile reels
+  @@index([cloudinaryPublicId])                 // Webhook lookup
+}
+
+/// Tracks which users have liked which reels.
+/// Composite primary key prevents duplicate likes.
+model ReelLike {
+  reelId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([reelId, userId])
+  @@index([reelId])
+  @@index([userId])
+}
+
+/// Records each view event — foundation for the recommendation engine.
+/// watch_duration and completed flag allow ranking by engagement quality.
+model ReelView {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reelId          String   @db.Uuid
+  userId          String   @db.Uuid
+  /// How many milliseconds the user actually watched
+  watchDurationMs Int
+  /// Did the user watch the entire reel without scrolling away?
+  completed       Boolean  @default(false)
+  /// Network quality at time of view (for adaptive streaming analytics)
+  quality         String?  @db.VarChar(10) // e.g. "1080p", "720p"
+  createdAt       DateTime @default(now())
+
+  reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reelId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Comments on a reel.
+model ReelComment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reelId    String   @db.Uuid
+  userId    String   @db.Uuid
+  text      String   @db.VarChar(2200)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
+
+  @@index([reelId, createdAt(sort: Desc)])
+}
+
+/// Follow relationships between users.
+model Follow {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  followerId  String   @db.Uuid
+  followingId String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
