@@ -2,16 +2,21 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import compression from 'compression';
 import morgan from 'morgan';
 import helmet from 'helmet';
+import express from 'express';
 
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+let cachedServer: express.Express | null = null;
+
+export async function bootstrap(expressInstance: express.Express) {
+  const adapter = new ExpressAdapter(expressInstance);
+  const app = await NestFactory.create(AppModule, adapter, {
     // Suppress verbose NestJS logs in production
     logger: process.env.NODE_ENV === 'production'
       ? ['error', 'warn']
@@ -100,15 +105,29 @@ async function bootstrap() {
         showRequestDuration: true,
       },
     });
-
-    console.log(`\n📚 Swagger docs: http://localhost:${port}/api/docs`);
   }
 
-  // ── Start ─────────────────────────────────────────────────────────────────
-  await app.listen(port);
-
-  console.log(`\n🚀 Instagram Reels API running on: http://localhost:${port}/${apiPrefix}`);
-  console.log(`🌍 Environment: ${nodeEnv}`);
+  await app.init();
+  return { app, port, apiPrefix, nodeEnv };
 }
 
-bootstrap();
+// Support running locally (NestJS server) or serverless (Vercel)
+if (!process.env.VERCEL) {
+  const localServer = express();
+  bootstrap(localServer).then(({ port, apiPrefix, nodeEnv }) => {
+    localServer.listen(port, () => {
+      console.log(`\n🚀 Instagram Reels API running locally on: http://localhost:${port}/${apiPrefix}`);
+      console.log(`🌍 Environment: ${nodeEnv}`);
+      console.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
+    });
+  });
+}
+
+// Export the serverless function handler for Vercel
+export default async function handler(req: any, res: any) {
+  if (!cachedServer) {
+    cachedServer = express();
+    await bootstrap(cachedServer);
+  }
+  return cachedServer(req, res);
+}
