@@ -2,6 +2,18 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/api/docs/swagger-ui.css",
+      "destination": "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.css"
+    },
+    {
+      "source": "/api/docs/swagger-ui-bundle.js",
+      "destination": "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.js"
+    },
+    {
+      "source": "/api/docs/swagger-ui-standalone-preset.js",
+      "destination": "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-standalone-preset.js"
+    },
+    {
       "source": "/(.*)",
       "destination": "/api"
     }
