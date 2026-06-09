@@ -40,11 +40,14 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  reels     Reel[]
-  likes     ReelLike[]
-  views     ReelView[]
-  followers Follow[]   @relation("following")
-  following Follow[]   @relation("follower")
+  reels        Reel[]
+  likes        ReelLike[]
+  views        ReelView[]
+  followers    Follow[]   @relation("following")
+  following    Follow[]   @relation("follower")
+  posts        Post[]
+  postLikes    PostLike[]
+  postComments PostComment[]
 
   @@index([username])
 }
@@ -155,4 +158,65 @@ model Follow {
 
   @@unique([followerId, followingId])
   @@index([followingId])
+}
+
+// ─── Post Models ──────────────────────────────────────────────────────────────
+
+model Post {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String        @db.Uuid
+  caption       String?       @db.VarChar(2200)
+  location      String?       @db.VarChar(100)
+  likesCount    Int           @default(0)
+  commentsCount Int           @default(0)
+  isDeleted     Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media         PostMedia[]
+  likes         PostLike[]
+  comments      PostComment[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model PostMedia {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId     String   @db.Uuid
+  mediaUrl   String
+  mediaType  String   // "IMAGE" | "VIDEO"
+  orderIndex Int      @default(0)
+
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, orderIndex])
+}
+
+model PostLike {
+  postId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model PostComment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId    String   @db.Uuid
+  userId    String   @db.Uuid
+  text      String   @db.VarChar(2200)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt(sort: Desc)])
 }
