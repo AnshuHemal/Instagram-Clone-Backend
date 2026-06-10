@@ -37,6 +37,8 @@ model User {
   avatarUrl    String?
   bio          String?   @db.VarChar(150)
   isVerified   Boolean   @default(false)
+  isOnboarded  Boolean   @default(false)
+  onboardingStep String  @default("PERMISSIONS") @db.VarChar(30)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

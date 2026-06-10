@@ -94,6 +94,17 @@ export class AuthController {
     return this.authService.uploadAvatar(user.sub, file);
   }
 
+  @Get('profile')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({ status: 200, description: 'Profile retrieved successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async getProfile(@CurrentUser() user: JwtPayload) {
+    return this.authService.getProfile(user.sub);
+  }
+
   @Get('users/suggestions')
   @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)

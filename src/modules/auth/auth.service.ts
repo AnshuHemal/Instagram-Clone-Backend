@@ -200,6 +200,8 @@ export class AuthService {
         username: user.username,
         email: user.email,
         displayName: user.displayName,
+        isOnboarded: user.isOnboarded,
+        onboardingStep: user.onboardingStep,
       },
     };
   }
@@ -252,6 +254,8 @@ export class AuthService {
         username: user.username,
         email: user.email,
         displayName: user.displayName,
+        isOnboarded: user.isOnboarded,
+        onboardingStep: user.onboardingStep,
       },
     };
   }
@@ -263,6 +267,8 @@ export class AuthService {
         ...(dto.name !== undefined && { displayName: dto.name }),
         ...(dto.bio !== undefined && { bio: dto.bio }),
         ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+        ...(dto.isOnboarded !== undefined && { isOnboarded: dto.isOnboarded }),
+        ...(dto.onboardingStep !== undefined && { onboardingStep: dto.onboardingStep }),
       },
     });
 
@@ -276,6 +282,8 @@ export class AuthService {
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         bio: user.bio,
+        isOnboarded: user.isOnboarded,
+        onboardingStep: user.onboardingStep,
       },
     };
   }
@@ -389,6 +397,30 @@ export class AuthService {
     return {
       success: true,
       count,
+    };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        isOnboarded: user.isOnboarded,
+        onboardingStep: user.onboardingStep,
+      },
     };
   }
 }

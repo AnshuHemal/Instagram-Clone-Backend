@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateProfileDto {
@@ -18,4 +18,14 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
+
+  @ApiProperty({ example: true, description: 'Has the user finished onboarding?', required: false })
+  @IsOptional()
+  @IsBoolean()
+  isOnboarded?: boolean;
+
+  @ApiProperty({ example: 'PROFILE_PICTURE', description: 'Current step in onboardings funnel', required: false })
+  @IsOptional()
+  @IsString()
+  onboardingStep?: string;
 }
