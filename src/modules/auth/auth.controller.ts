@@ -93,4 +93,29 @@ export class AuthController {
     }
     return this.authService.uploadAvatar(user.sub, file);
   }
+
+  @Get('users/suggestions')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get profile follow suggestions' })
+  @ApiResponse({ status: 200, description: 'Suggestions retrieved successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async getSuggestions(@CurrentUser() user: JwtPayload) {
+    return this.authService.getSuggestions(user.sub);
+  }
+
+  @Post('users/follow-multiple')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Follow multiple users' })
+  @ApiResponse({ status: 200, description: 'Follow relationships created successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async followMultiple(
+    @CurrentUser() user: JwtPayload,
+    @Body('followingIds') followingIds: string[],
+  ) {
+    return this.authService.followMultiple(user.sub, followingIds);
+  }
 }

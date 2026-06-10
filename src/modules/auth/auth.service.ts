@@ -324,4 +324,71 @@ export class AuthService {
       throw new BadRequestException('Failed to upload image. Please try again.');
     }
   }
+
+  async getSuggestions(userId: string) {
+    // Fetch users excluding the current user
+    const users = await this.db.user.findMany({
+      where: {
+        id: { not: userId },
+      },
+      take: 20,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Get the list of users the current user is already following
+    const following = await this.db.follow.findMany({
+      where: {
+        followerId: userId,
+      },
+      select: {
+        followingId: true,
+      },
+    });
+
+    const followingIds = new Set(following.map(f => f.followingId));
+
+    return users.map(user => ({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+      verified: user.isVerified,
+      checked: followingIds.has(user.id),
+    }));
+  }
+
+  async followMultiple(userId: string, followingIds: string[]) {
+    if (!Array.isArray(followingIds) || followingIds.length === 0) {
+      return { success: true, count: 0 };
+    }
+
+    let count = 0;
+    for (const fid of followingIds) {
+      try {
+        await this.db.follow.upsert({
+          where: {
+            followerId_followingId: {
+              followerId: userId,
+              followingId: fid,
+            },
+          },
+          update: {},
+          create: {
+            followerId: userId,
+            followingId: fid,
+          },
+        });
+        count++;
+      } catch (err) {
+        this.logger.error(`Error following user ${fid}:`, err);
+      }
+    }
+
+    return {
+      success: true,
+      count,
+    };
+  }
 }
