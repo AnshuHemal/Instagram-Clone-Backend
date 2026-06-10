@@ -4,6 +4,7 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { FeedQueryDto } from './dto/feed-query.dto';
 import { PaginatedResult } from '../../common/types/api-response.type';
+import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class PostsService {
@@ -12,6 +13,7 @@ export class PostsService {
   constructor(
     private readonly repo: PostsRepository,
     private readonly cloudinary: CloudinaryService,
+    private readonly cache: CacheService,
   ) {}
 
   getUploadSignature(userId: string) {
@@ -34,10 +36,61 @@ export class PostsService {
     return this.formatPostResponse(post);
   }
 
+  private shuffle<T>(array: T[]): T[] {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
   async getFeed(userId: string, query: FeedQueryDto): Promise<PaginatedResult<any>> {
-    const feed = await this.repo.findFeed(query.limit, query.cursor);
+    const limit = query.limit;
+    const cursor = query.cursor;
+    const userKey = userId || 'anonymous';
+    const idsCacheKey = `posts:feed:random:ids:${userKey}`;
+
+    let shuffledIds: string[] = [];
+
+    if (!cursor) {
+      this.logger.debug(`Generating new randomized posts feed for user: ${userKey}`);
+      const allIds = await this.repo.findAllIds();
+      shuffledIds = this.shuffle(allIds);
+      await this.cache.set(idsCacheKey, shuffledIds, 600); // 10 minutes TTL
+    } else {
+      this.logger.debug(`Retrieving cached randomized posts feed for user: ${userKey}, cursor: ${cursor}`);
+      const cachedIds = await this.cache.get<string[]>(idsCacheKey);
+      if (cachedIds && cachedIds.length > 0) {
+        shuffledIds = cachedIds;
+      } else {
+        this.logger.warn(`Randomized posts feed cache miss for user ${userKey} during paging. Regenerating feed.`);
+        const allIds = await this.repo.findAllIds();
+        shuffledIds = this.shuffle(allIds);
+        await this.cache.set(idsCacheKey, shuffledIds, 600);
+      }
+    }
+
+    const startIndex = cursor ? parseInt(cursor, 10) : 0;
+    if (isNaN(startIndex) || startIndex >= shuffledIds.length) {
+      return {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      };
+    }
+
+    const endIndex = startIndex + limit;
+    const pageIds = shuffledIds.slice(startIndex, endIndex);
+    const posts = await this.repo.findFeedByIds(pageIds);
+
+    // Map database results to preserve the shuffled pageIds ordering
+    const postsMap = new Map(posts.map((p) => [p.id, p]));
+    const orderedPosts = pageIds.map((id) => postsMap.get(id)).filter(Boolean);
+
     const enrichedItems = await Promise.all(
-      feed.items.map(async (post) => {
+      orderedPosts.map(async (post) => {
+        if (!post) throw new Error('Post not found in feed');
         const isLiked = userId ? await this.repo.isLikedBy(post.id, userId) : false;
         return {
           ...this.formatPostResponse(post),
@@ -46,10 +99,13 @@ export class PostsService {
       }),
     );
 
+    const hasMore = endIndex < shuffledIds.length;
+    const nextCursor = hasMore ? endIndex.toString() : null;
+
     return {
       items: enrichedItems,
-      nextCursor: feed.nextCursor,
-      hasMore: feed.hasMore,
+      nextCursor,
+      hasMore,
     };
   }
 

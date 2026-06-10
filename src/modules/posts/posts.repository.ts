@@ -232,4 +232,44 @@ export class PostsRepository {
       },
     });
   }
+
+  async findAllIds(): Promise<string[]> {
+    const posts = await this.db.post.findMany({
+      where: {
+        isDeleted: false,
+      },
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    return posts.map((p) => p.id);
+  }
+
+  async findFeedByIds(ids: string[]): Promise<PostWithDetails[]> {
+    return this.db.post.findMany({
+      where: {
+        id: { in: ids },
+        isDeleted: false,
+      },
+      include: {
+        user: {
+          select: {
+            id:          true,
+            username:    true,
+            displayName: true,
+            avatarUrl:   true,
+            isVerified:  true,
+          },
+        },
+        media: {
+          orderBy: {
+            orderIndex: 'asc',
+          },
+        },
+      },
+    });
+  }
 }

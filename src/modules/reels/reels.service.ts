@@ -118,7 +118,11 @@ export class ReelsService {
     const pageIds = shuffledIds.slice(startIndex, endIndex);
     const reels = await this.repo.findFeedByIds(pageIds);
 
-    const enriched = reels.map((reel) => this.formatReelResponse(reel));
+    // Map database results to preserve the shuffled pageIds ordering
+    const reelsMap = new Map(reels.map((r) => [r.id, r]));
+    const orderedReels = pageIds.map((id) => reelsMap.get(id)).filter(Boolean);
+
+    const enriched = orderedReels.map((reel) => this.formatReelResponse(reel));
 
     const hasMore = endIndex < shuffledIds.length;
     const nextCursor = hasMore ? endIndex.toString() : null;
