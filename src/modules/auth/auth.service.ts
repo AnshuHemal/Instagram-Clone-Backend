@@ -8,7 +8,9 @@ import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RegisterCompleteDto } from './dto/register-complete.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { MailService } from '../mail/mail.service';
+import { v2 as cloudinary } from 'cloudinary';
 
 interface SignupSession {
   emailOrPhone: string;
@@ -252,5 +254,74 @@ export class AuthService {
         displayName: user.displayName,
       },
     };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.db.user.update({
+      where: { id: userId },
+      data: {
+        ...(dto.name !== undefined && { displayName: dto.name }),
+        ...(dto.bio !== undefined && { bio: dto.bio }),
+        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Profile updated successfully.',
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+      },
+    };
+  }
+
+  async uploadAvatar(userId: string, file: any) {
+    try {
+      // Upload file buffer directly to Cloudinary
+      const uploadResult = await new Promise<any>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'avatars',
+            resource_type: 'image',
+            transformation: [{ width: 300, height: 300, crop: 'fill', gravity: 'face' }],
+          },
+          (error, result) => {
+            if (error) return reject(error);
+            resolve(result);
+          }
+        );
+        uploadStream.end(file.buffer);
+      });
+
+      const avatarUrl = uploadResult.secure_url;
+
+      // Update in Neon database
+      const user = await this.db.user.update({
+        where: { id: userId },
+        data: { avatarUrl },
+      });
+
+      return {
+        success: true,
+        message: 'Avatar uploaded successfully.',
+        avatarUrl,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+          bio: user.bio,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Failed to upload avatar to Cloudinary:', error);
+      throw new BadRequestException('Failed to upload image. Please try again.');
+    }
   }
 }
