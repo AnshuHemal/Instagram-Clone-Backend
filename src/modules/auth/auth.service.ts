@@ -202,6 +202,9 @@ export class AuthService {
         displayName: user.displayName,
         isOnboarded: user.isOnboarded,
         onboardingStep: user.onboardingStep,
+        followersCount: 0,
+        followingCount: 0,
+        postsCount: 0,
       },
     };
   }
@@ -239,6 +242,12 @@ export class AuthService {
       throw new UnauthorizedException('Incorrect login identifier or password.');
     }
 
+    const [followersCount, followingCount, postsCount] = await Promise.all([
+      this.db.follow.count({ where: { followingId: user.id } }),
+      this.db.follow.count({ where: { followerId: user.id } }),
+      this.db.post.count({ where: { userId: user.id, isDeleted: false } }),
+    ]);
+
     // Sign Access Token
     const accessToken = this.jwtService.sign({
       sub: user.id,
@@ -256,6 +265,9 @@ export class AuthService {
         displayName: user.displayName,
         isOnboarded: user.isOnboarded,
         onboardingStep: user.onboardingStep,
+        followersCount,
+        followingCount,
+        postsCount,
       },
     };
   }
@@ -272,6 +284,12 @@ export class AuthService {
       },
     });
 
+    const [followersCount, followingCount, postsCount] = await Promise.all([
+      this.db.follow.count({ where: { followingId: userId } }),
+      this.db.follow.count({ where: { followerId: userId } }),
+      this.db.post.count({ where: { userId, isDeleted: false } }),
+    ]);
+
     return {
       success: true,
       message: 'Profile updated successfully.',
@@ -284,6 +302,9 @@ export class AuthService {
         bio: user.bio,
         isOnboarded: user.isOnboarded,
         onboardingStep: user.onboardingStep,
+        followersCount,
+        followingCount,
+        postsCount,
       },
     };
   }
@@ -314,6 +335,12 @@ export class AuthService {
         data: { avatarUrl },
       });
 
+      const [followersCount, followingCount, postsCount] = await Promise.all([
+        this.db.follow.count({ where: { followingId: userId } }),
+        this.db.follow.count({ where: { followerId: userId } }),
+        this.db.post.count({ where: { userId, isDeleted: false } }),
+      ]);
+
       return {
         success: true,
         message: 'Avatar uploaded successfully.',
@@ -325,6 +352,9 @@ export class AuthService {
           displayName: user.displayName,
           avatarUrl: user.avatarUrl,
           bio: user.bio,
+          followersCount,
+          followingCount,
+          postsCount,
         },
       };
     } catch (error) {
@@ -409,6 +439,12 @@ export class AuthService {
       throw new UnauthorizedException('User not found.');
     }
 
+    const [followersCount, followingCount, postsCount] = await Promise.all([
+      this.db.follow.count({ where: { followingId: userId } }),
+      this.db.follow.count({ where: { followerId: userId } }),
+      this.db.post.count({ where: { userId, isDeleted: false } }),
+    ]);
+
     return {
       success: true,
       user: {
@@ -420,6 +456,9 @@ export class AuthService {
         bio: user.bio,
         isOnboarded: user.isOnboarded,
         onboardingStep: user.onboardingStep,
+        followersCount,
+        followingCount,
+        postsCount,
       },
     };
   }
