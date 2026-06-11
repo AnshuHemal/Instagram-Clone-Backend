@@ -462,4 +462,133 @@ export class AuthService {
       },
     };
   }
+
+  async followUser(userId: string, targetId: string) {
+    if (userId === targetId) {
+      throw new BadRequestException('You cannot follow yourself.');
+    }
+
+    const targetUser = await this.db.user.findUnique({ where: { id: targetId } });
+    if (!targetUser) {
+      throw new BadRequestException('User not found.');
+    }
+
+    const existing = await this.db.follow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: userId,
+          followingId: targetId,
+        },
+      },
+    });
+
+    if (existing) {
+      return { success: true, following: true, message: 'Already following.' };
+    }
+
+    await this.db.follow.create({
+      data: {
+        followerId: userId,
+        followingId: targetId,
+      },
+    });
+
+    const [followersCount, followingCount] = await Promise.all([
+      this.db.follow.count({ where: { followingId: userId } }),
+      this.db.follow.count({ where: { followerId: userId } }),
+    ]);
+
+    return {
+      success: true,
+      following: true,
+      followersCount,
+      followingCount,
+    };
+  }
+
+  async unfollowUser(userId: string, targetId: string) {
+    if (userId === targetId) {
+      throw new BadRequestException('Invalid action.');
+    }
+
+    await this.db.follow.deleteMany({
+      where: {
+        followerId: userId,
+        followingId: targetId,
+      },
+    });
+
+    const [followersCount, followingCount] = await Promise.all([
+      this.db.follow.count({ where: { followingId: userId } }),
+      this.db.follow.count({ where: { followerId: userId } }),
+    ]);
+
+    return {
+      success: true,
+      following: false,
+      followersCount,
+      followingCount,
+    };
+  }
+
+  async getFollowStatus(userId: string, targetId: string) {
+    const existing = await this.db.follow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: userId,
+          followingId: targetId,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      following: !!existing,
+    };
+  }
+
+  async getUserProfile(userId: string, viewerId?: string) {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found.');
+    }
+
+    const [followersCount, followingCount, postsCount] = await Promise.all([
+      this.db.follow.count({ where: { followingId: userId } }),
+      this.db.follow.count({ where: { followerId: userId } }),
+      this.db.post.count({ where: { userId, isDeleted: false } }),
+    ]);
+
+    let isFollowing = false;
+    if (viewerId && viewerId !== userId) {
+      const followRecord = await this.db.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: viewerId,
+            followingId: userId,
+          },
+        },
+      });
+      isFollowing = !!followRecord;
+    }
+
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        isVerified: user.isVerified,
+        followersCount,
+        followingCount,
+        postsCount,
+        isFollowing,
+      },
+    };
+  }
 }

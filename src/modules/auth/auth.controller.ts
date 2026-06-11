@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Query, HttpCode, HttpStatus, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Query, HttpCode, HttpStatus, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -128,5 +128,63 @@ export class AuthController {
     @Body('followingIds') followingIds: string[],
   ) {
     return this.authService.followMultiple(user.sub, followingIds);
+  }
+
+  @Post('users/:id/follow')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Follow a user' })
+  @ApiResponse({ status: 200, description: 'Followed successfully.' })
+  @ApiResponse({ status: 400, description: 'Cannot follow self or user not found.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async followUser(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') targetId: string,
+  ) {
+    return this.authService.followUser(user.sub, targetId);
+  }
+
+  @Delete('users/:id/follow')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unfollow a user' })
+  @ApiResponse({ status: 200, description: 'Unfollowed successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async unfollowUser(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') targetId: string,
+  ) {
+    return this.authService.unfollowUser(user.sub, targetId);
+  }
+
+  @Get('users/:id/follow-status')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check follow status' })
+  @ApiResponse({ status: 200, description: 'Follow status retrieved.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async getFollowStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') targetId: string,
+  ) {
+    return this.authService.getFollowStatus(user.sub, targetId);
+  }
+
+  @Get('users/:id/profile')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get user profile by ID' })
+  @ApiResponse({ status: 200, description: 'Profile retrieved successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  async getUserProfile(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') targetId: string,
+  ) {
+    return this.authService.getUserProfile(targetId, user.sub);
   }
 }
