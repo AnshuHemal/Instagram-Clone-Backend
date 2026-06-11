@@ -4,9 +4,10 @@ import { PostsService } from './posts.service';
 import { PostsRepository } from './posts.repository';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { CacheModule } from '../cache/cache.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [CloudinaryModule, CacheModule],
+  imports: [CloudinaryModule, CacheModule, NotificationsModule],
   controllers: [PostsController],
   providers: [PostsService, PostsRepository],
   exports: [PostsService],

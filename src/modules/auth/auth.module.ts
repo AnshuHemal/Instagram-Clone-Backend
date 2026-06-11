@@ -7,6 +7,7 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { MailModule } from '../mail/mail.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { MailModule } from '../mail/mail.module';
     }),
     DatabaseModule,
     MailModule,
+    NotificationsModule,
   ],
   controllers: [AuthController],
   providers: [JwtStrategy, AuthService],

@@ -5,6 +5,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { FeedQueryDto } from './dto/feed-query.dto';
 import { PaginatedResult } from '../../common/types/api-response.type';
 import { CacheService } from '../cache/cache.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PostsService {
@@ -14,6 +15,7 @@ export class PostsService {
     private readonly repo: PostsRepository,
     private readonly cloudinary: CloudinaryService,
     private readonly cache: CacheService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   getUploadSignature(userId: string) {
@@ -125,6 +127,17 @@ export class PostsService {
     if (!post) throw new NotFoundException(`Post ${postId} not found`);
 
     const result = await this.repo.toggleLike(postId, userId);
+
+    // Create like notification if post was liked (not unliked)
+    if (result.liked) {
+      await this.notificationsService.createNotification(
+        post.userId,
+        userId,
+        'LIKE_POST',
+        postId,
+      );
+    }
+
     return result;
   }
 
@@ -133,6 +146,17 @@ export class PostsService {
     if (!post) throw new NotFoundException(`Post ${postId} not found`);
 
     const comment = await this.repo.addComment(postId, userId, text);
+
+    // Create comment notification
+    await this.notificationsService.createNotification(
+      post.userId,
+      userId,
+      'COMMENT_POST',
+      postId,
+      undefined,
+      text,
+    );
+
     return {
       id: comment.id,
       text: comment.text,

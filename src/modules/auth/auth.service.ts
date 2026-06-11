@@ -10,6 +10,7 @@ import { RegisterCompleteDto } from './dto/register-complete.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { v2 as cloudinary } from 'cloudinary';
 
 interface SignupSession {
@@ -27,6 +28,7 @@ export class AuthService {
     private readonly cache: CacheService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
 
@@ -492,6 +494,13 @@ export class AuthService {
         followingId: targetId,
       },
     });
+
+    // Create follow notification
+    await this.notificationsService.createNotification(
+      targetId,
+      userId,
+      'FOLLOW',
+    );
 
     const [followersCount, followingCount] = await Promise.all([
       this.db.follow.count({ where: { followingId: userId } }),

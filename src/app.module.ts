@@ -12,6 +12,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PostsModule } from './modules/posts/posts.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -60,6 +61,7 @@ import { HealthController } from './health.controller';
     WebhooksModule,   // Cloudinary processing callbacks
     JobsModule,       // Cron: flush Redis stats → Neon DB
     PostsModule,      // Core Feed Posts CRUD + engagement
+    NotificationsModule, // User notifications
   ],
   controllers: [HealthController],
 })

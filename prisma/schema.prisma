@@ -50,6 +50,8 @@ model User {
   posts        Post[]
   postLikes    PostLike[]
   postComments PostComment[]
+  notifications        Notification[] @relation("notificationRecipient")
+  actorNotifications   Notification[] @relation("notificationActor")
 
   @@index([username])
 }
@@ -221,4 +223,32 @@ model PostComment {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([postId, createdAt(sort: Desc)])
+}
+
+// ─── Notification Model ──────────────────────────────────────────────────────
+
+enum NotificationType {
+  FOLLOW
+  LIKE_POST
+  LIKE_REEL
+  COMMENT_POST
+  COMMENT_REEL
+}
+
+model Notification {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientId String           @db.Uuid
+  actorId     String           @db.Uuid
+  type        NotificationType
+  postId      String?          @db.Uuid
+  reelId      String?          @db.Uuid
+  commentText String?          @db.VarChar(200)
+  read        Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  recipient User @relation("notificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User @relation("notificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, read, createdAt(sort: Desc)])
+  @@index([recipientId, createdAt(sort: Desc)])
 }
