@@ -207,6 +207,8 @@ export class AuthService {
         followersCount: 0,
         followingCount: 0,
         postsCount: 0,
+        phone: user.phone,
+        birthday: user.birthday,
       },
     };
   }
@@ -270,8 +272,31 @@ export class AuthService {
         followersCount,
         followingCount,
         postsCount,
+        phone: user.phone,
+        birthday: user.birthday,
       },
     };
+  }
+
+  private getCloudinaryPublicId(url: string): string | null {
+    if (!url || !url.includes('cloudinary.com')) return null;
+    try {
+      const parts = url.split('/image/upload/');
+      if (parts.length < 2) return null;
+      
+      let path = parts[1];
+      // Remove version like v1234567/
+      path = path.replace(/^v\d+\//, '');
+      
+      // Remove file extension
+      const lastDotIndex = path.lastIndexOf('.');
+      if (lastDotIndex !== -1) {
+        path = path.substring(0, lastDotIndex);
+      }
+      return path;
+    } catch (e) {
+      return null;
+    }
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
@@ -290,6 +315,24 @@ export class AuthService {
       }
     }
 
+    if (dto.avatarUrl !== undefined) {
+      const currentUser = await this.db.user.findUnique({
+        where: { id: userId },
+        select: { avatarUrl: true },
+      });
+      if (currentUser && currentUser.avatarUrl && currentUser.avatarUrl !== dto.avatarUrl) {
+        const oldPublicId = this.getCloudinaryPublicId(currentUser.avatarUrl);
+        if (oldPublicId) {
+          try {
+            await cloudinary.uploader.destroy(oldPublicId, { resource_type: 'image' });
+            this.logger.log(`Deleted Cloudinary avatar: ${oldPublicId}`);
+          } catch (err) {
+            this.logger.error(`Failed to delete old Cloudinary avatar ${oldPublicId}:`, err);
+          }
+        }
+      }
+    }
+
     const user = await this.db.user.update({
       where: { id: userId },
       data: {
@@ -303,6 +346,7 @@ export class AuthService {
         ...(dto.pronouns !== undefined && { pronouns: dto.pronouns }),
         ...(dto.links !== undefined && { links: dto.links }),
         ...(dto.showPronounsToFollowers !== undefined && { showPronounsToFollowers: dto.showPronounsToFollowers }),
+        ...(dto.birthday !== undefined && { birthday: new Date(dto.birthday) }),
       },
     });
 
@@ -331,12 +375,19 @@ export class AuthService {
         followersCount,
         followingCount,
         postsCount,
+        phone: user.phone,
+        birthday: user.birthday,
       },
     };
   }
 
   async uploadAvatar(userId: string, file: any) {
     try {
+      const currentUser = await this.db.user.findUnique({
+        where: { id: userId },
+        select: { avatarUrl: true },
+      });
+
       // Upload file buffer directly to Cloudinary
       const uploadResult = await new Promise<any>((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
@@ -354,6 +405,18 @@ export class AuthService {
       });
 
       const avatarUrl = uploadResult.secure_url;
+
+      if (currentUser && currentUser.avatarUrl) {
+        const oldPublicId = this.getCloudinaryPublicId(currentUser.avatarUrl);
+        if (oldPublicId) {
+          try {
+            await cloudinary.uploader.destroy(oldPublicId, { resource_type: 'image' });
+            this.logger.log(`Deleted old Cloudinary avatar: ${oldPublicId}`);
+          } catch (err) {
+            this.logger.error(`Failed to delete old Cloudinary avatar ${oldPublicId}:`, err);
+          }
+        }
+      }
 
       // Update in Neon database
       const user = await this.db.user.update({
@@ -489,6 +552,8 @@ export class AuthService {
         followersCount,
         followingCount,
         postsCount,
+        phone: user.phone,
+        birthday: user.birthday,
       },
     };
   }

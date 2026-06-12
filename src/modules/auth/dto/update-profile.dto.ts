@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsBoolean, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, MaxLength, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateProfileDto {
@@ -55,4 +55,9 @@ export class UpdateProfileDto {
   @ApiProperty({ example: [{ id: '1', title: 'GitHub', url: 'https://github.com' }], description: 'List of user website links', required: false })
   @IsOptional()
   links?: any;
+
+  @ApiProperty({ example: '1998-06-15', description: 'User birthday (ISO date string)', required: false })
+  @IsOptional()
+  @IsDateString()
+  birthday?: string;
 }
