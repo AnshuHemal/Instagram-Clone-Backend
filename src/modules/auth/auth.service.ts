@@ -275,6 +275,21 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    if (dto.username !== undefined) {
+      const cleanedUsername = dto.username.trim().toLowerCase();
+      const currentUser = await this.db.user.findUnique({
+        where: { id: userId },
+      });
+      if (currentUser && currentUser.username !== cleanedUsername) {
+        const existingUser = await this.db.user.findUnique({
+          where: { username: cleanedUsername },
+        });
+        if (existingUser) {
+          throw new ConflictException(`The username '${dto.username}' is already taken.`);
+        }
+      }
+    }
+
     const user = await this.db.user.update({
       where: { id: userId },
       data: {
@@ -283,6 +298,11 @@ export class AuthService {
         ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
         ...(dto.isOnboarded !== undefined && { isOnboarded: dto.isOnboarded }),
         ...(dto.onboardingStep !== undefined && { onboardingStep: dto.onboardingStep }),
+        ...(dto.username !== undefined && { username: dto.username.trim().toLowerCase() }),
+        ...(dto.gender !== undefined && { gender: dto.gender }),
+        ...(dto.pronouns !== undefined && { pronouns: dto.pronouns }),
+        ...(dto.links !== undefined && { links: dto.links }),
+        ...(dto.showPronounsToFollowers !== undefined && { showPronounsToFollowers: dto.showPronounsToFollowers }),
       },
     });
 
@@ -302,6 +322,10 @@ export class AuthService {
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         bio: user.bio,
+        gender: user.gender,
+        pronouns: user.pronouns,
+        showPronounsToFollowers: user.showPronounsToFollowers,
+        links: user.links,
         isOnboarded: user.isOnboarded,
         onboardingStep: user.onboardingStep,
         followersCount,
@@ -456,6 +480,10 @@ export class AuthService {
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         bio: user.bio,
+        gender: user.gender,
+        pronouns: user.pronouns,
+        showPronounsToFollowers: user.showPronounsToFollowers,
+        links: user.links,
         isOnboarded: user.isOnboarded,
         onboardingStep: user.onboardingStep,
         followersCount,

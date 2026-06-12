@@ -36,6 +36,10 @@ model User {
   displayName  String    @db.VarChar(50)
   avatarUrl    String?
   bio          String?   @db.VarChar(150)
+  gender       String?   @db.VarChar(30)
+  pronouns     String?   @db.VarChar(30)
+  links        Json?     @default("[]")
+  showPronounsToFollowers Boolean @default(false)
   isVerified   Boolean   @default(false)
   isOnboarded  Boolean   @default(false)
   onboardingStep String  @default("PERMISSIONS") @db.VarChar(30)

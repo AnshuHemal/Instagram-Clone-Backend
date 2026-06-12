@@ -8,11 +8,34 @@ export class UpdateProfileDto {
   @MaxLength(50)
   name?: string;
 
+  @ApiProperty({ example: 'johndoe', description: 'Unique username', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  username?: string;
+
   @ApiProperty({ example: 'New bio description...', description: 'User biography description', required: false })
   @IsOptional()
   @IsString()
   @MaxLength(150)
   bio?: string;
+
+  @ApiProperty({ example: 'Male', description: 'Gender value', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  gender?: string;
+
+  @ApiProperty({ example: 'he/him', description: 'Pronouns value', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  pronouns?: string;
+
+  @ApiProperty({ example: false, description: 'Show pronouns to followers only privacy setting', required: false })
+  @IsOptional()
+  @IsBoolean()
+  showPronounsToFollowers?: boolean;
 
   @ApiProperty({ example: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', description: 'URL of the profile picture/avatar', required: false })
   @IsOptional()
@@ -28,4 +51,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   onboardingStep?: string;
+
+  @ApiProperty({ example: [{ id: '1', title: 'GitHub', url: 'https://github.com' }], description: 'List of user website links', required: false })
+  @IsOptional()
+  links?: any;
 }
