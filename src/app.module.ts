@@ -14,6 +14,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { StoriesModule } from './modules/stories/stories.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -64,6 +65,7 @@ import { HealthController } from './health.controller';
     PostsModule,      // Core Feed Posts CRUD + engagement
     NotificationsModule, // User notifications
     ChatModule,       // Real-time Chat Module
+    StoriesModule,    // Dynamic expiring Stories Module
   ],
   controllers: [HealthController],
 })
