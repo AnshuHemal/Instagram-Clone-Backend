@@ -13,6 +13,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -62,6 +63,7 @@ import { HealthController } from './health.controller';
     JobsModule,       // Cron: flush Redis stats → Neon DB
     PostsModule,      // Core Feed Posts CRUD + engagement
     NotificationsModule, // User notifications
+    ChatModule,       // Real-time Chat Module
   ],
   controllers: [HealthController],
 })
