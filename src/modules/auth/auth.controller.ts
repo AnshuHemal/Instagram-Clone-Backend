@@ -7,6 +7,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RegisterCompleteDto } from './dto/register-complete.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -186,5 +187,14 @@ export class AuthController {
     @Param('id') targetId: string,
   ) {
     return this.authService.getUserProfile(targetId, user.sub);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh JWT access tokens' })
+  @ApiResponse({ status: 200, description: 'Tokens refreshed successfully.' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token.' })
+  async refreshTokens(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshTokens(dto);
   }
 }

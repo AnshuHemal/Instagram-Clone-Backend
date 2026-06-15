@@ -9,6 +9,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RegisterCompleteDto } from './dto/register-complete.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { v2 as cloudinary } from 'cloudinary';
@@ -187,16 +188,22 @@ export class AuthService {
     // Invalidate the signup session token
     await this.cache.del(sessionKey);
 
-    // Sign Access Token
+    // Sign Access Token (expires in 15 minutes)
     const accessToken = this.jwtService.sign({
       sub: user.id,
       username: user.username,
       email: user.email,
-    });
+    }, { expiresIn: '15m' });
+
+    // Generate Refresh Token (expires in 7 days)
+    const refreshToken = `ref_${randomBytes(32).toString('hex')}`;
+    const refreshTokenKey = `refresh_token:${refreshToken}`;
+    await this.cache.set(refreshTokenKey, user.id, 604800);
 
     return {
       success: true,
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -252,16 +259,22 @@ export class AuthService {
       this.db.post.count({ where: { userId: user.id, isDeleted: false } }),
     ]);
 
-    // Sign Access Token
+    // Sign Access Token (expires in 15 minutes)
     const accessToken = this.jwtService.sign({
       sub: user.id,
       username: user.username,
       email: user.email,
-    });
+    }, { expiresIn: '15m' });
+
+    // Generate Refresh Token (expires in 7 days)
+    const refreshToken = `ref_${randomBytes(32).toString('hex')}`;
+    const refreshTokenKey = `refresh_token:${refreshToken}`;
+    await this.cache.set(refreshTokenKey, user.id, 604800);
 
     return {
       success: true,
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -691,6 +704,49 @@ export class AuthService {
         postsCount,
         isFollowing,
       },
+    };
+  }
+
+  async refreshTokens(dto: RefreshTokenDto) {
+    const { refreshToken } = dto;
+    const refreshTokenKey = `refresh_token:${refreshToken}`;
+
+    // Resolve user ID from cache
+    const userId = await this.cache.get<string>(refreshTokenKey);
+    if (!userId) {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    // Invalidate old refresh token
+    await this.cache.del(refreshTokenKey);
+
+    // Verify user exists in Neon DB
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    // Generate new pair of tokens
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      email: user.email,
+    };
+
+    const newAccessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const newRefreshToken = `ref_${randomBytes(32).toString('hex')}`;
+    const newRefreshTokenKey = `refresh_token:${newRefreshToken}`;
+
+    // Store new refresh token in Redis
+    await this.cache.set(newRefreshTokenKey, user.id, 604800);
+
+    return {
+      success: true,
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
     };
   }
 }
