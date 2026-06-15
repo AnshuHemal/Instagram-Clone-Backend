@@ -7,7 +7,11 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -58,5 +62,25 @@ export class ChatController {
     @Param('id') conversationId: string,
   ) {
     return this.chatService.getConversationById(conversationId, user.sub);
+  }
+
+  /**
+   * Upload chat media (image/video) to Cloudinary and return the secure URL.
+   */
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadChatMedia(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const result = await this.chatService.uploadChatMedia(user.sub, file);
+    return {
+      success: true,
+      message: 'Media uploaded successfully',
+      data: result,
+    };
   }
 }

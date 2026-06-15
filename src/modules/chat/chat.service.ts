@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { ChatPresenceService } from './chat-presence.service';
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class ChatService {
@@ -8,6 +9,52 @@ export class ChatService {
     private readonly db: DatabaseService,
     private readonly presenceService: ChatPresenceService,
   ) {}
+
+  /**
+   * Marks all unread messages in a conversation sent by the other user as read.
+   */
+  async markConversationMessagesAsRead(conversationId: string, userId: string) {
+    const result = await this.db.message.updateMany({
+      where: {
+        conversationId,
+        senderId: { not: userId },
+        isRead: false,
+      },
+      data: {
+        isRead: true,
+      },
+    });
+
+    return { success: true, count: result.count };
+  }
+
+  /**
+   * Uploads file buffer to Cloudinary (image or video) for chat media.
+   */
+  async uploadChatMedia(userId: string, file: any) {
+    try {
+      const uploadResult = await new Promise<any>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'chat_media',
+            resource_type: 'auto',
+          },
+          (error, result) => {
+            if (error) return reject(error);
+            resolve(result);
+          }
+        );
+        uploadStream.end(file.buffer);
+      });
+
+      return {
+        secure_url: uploadResult.secure_url,
+        resource_type: uploadResult.resource_type,
+      };
+    } catch (err) {
+      throw new BadRequestException(`Media upload failed: ${err.message}`);
+    }
+  }
 
   /**
    * Finds an existing 1-to-1 conversation between two users, or creates a new one.
@@ -121,29 +168,42 @@ export class ChatService {
       },
     });
 
-    // Format for client consumption
-    return conversations.map((conv) => {
-      // Extract partner details (the participant that is NOT the user)
-      const partner = conv.participants.find((p) => p.userId !== userId)?.user || null;
-      const lastMessage = conv.messages[0] || null;
+    // Format for client consumption with unread count
+    const conversationList = await Promise.all(
+      conversations.map(async (conv) => {
+        // Extract partner details (the participant that is NOT the user)
+        const partner = conv.participants.find((p) => p.userId !== userId)?.user || null;
+        const lastMessage = conv.messages[0] || null;
 
-      const partnerWithPresence = partner ? {
-        ...partner,
-        isOnline: this.presenceService.isOnline(partner.id),
-      } : null;
+        const partnerWithPresence = partner ? {
+          ...partner,
+          isOnline: this.presenceService.isOnline(partner.id),
+        } : null;
 
-      return {
-        id: conv.id,
-        isGroup: conv.isGroup,
-        createdAt: conv.createdAt,
-        updatedAt: conv.updatedAt,
-        partner: partnerWithPresence,
-        lastMessage: lastMessage ? lastMessage.text : '',
-        lastMessageTime: lastMessage ? lastMessage.createdAt : conv.updatedAt,
-        lastMessageSenderId: lastMessage ? lastMessage.senderId : null,
-        unreadCount: 0, // In production this would query unread status
-      };
-    }).sort((a, b) => {
+        // Query the actual unread messages count
+        const unreadCount = await this.db.message.count({
+          where: {
+            conversationId: conv.id,
+            senderId: { not: userId },
+            isRead: false,
+          },
+        });
+
+        return {
+          id: conv.id,
+          isGroup: conv.isGroup,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+          partner: partnerWithPresence,
+          lastMessage: lastMessage ? lastMessage.text : '',
+          lastMessageTime: lastMessage ? lastMessage.createdAt : conv.updatedAt,
+          lastMessageSenderId: lastMessage ? lastMessage.senderId : null,
+          unreadCount,
+        };
+      })
+    );
+
+    return conversationList.sort((a, b) => {
       const timeA = new Date(a.lastMessageTime).getTime();
       const timeB = new Date(b.lastMessageTime).getTime();
       return timeB - timeA; // sort newest first

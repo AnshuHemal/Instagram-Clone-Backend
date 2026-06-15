@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ChatService } from './chat.service';
 import { ChatPresenceService } from './chat-presence.service';
+import { DatabaseService } from '../database/database.service';
 
 @WebSocketGateway({
   cors: {
@@ -31,6 +32,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
     private readonly presenceService: ChatPresenceService,
+    private readonly db: DatabaseService,
   ) {}
 
   /**
@@ -142,14 +144,105 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Also trigger a global inbox update notification for unjoined participants
       this.server.emit('inboxUpdated', {
         conversationId: data.conversationId,
-        lastMessage: message.text,
+        lastMessage: message.mediaUrl ? 'Sent a photo' : message.text,
         lastMessageTime: message.createdAt,
         lastMessageSenderId: senderId,
+      });
+
+      // Expo Push Notification logic for background/inactive partner
+      this.db.conversation.findUnique({
+        where: { id: data.conversationId },
+        include: { participants: { select: { userId: true } } },
+      }).then(async (conv) => {
+        if (!conv) return;
+        const partner = conv.participants.find(p => p.userId !== senderId);
+        if (!partner) return;
+
+        const partnerId = partner.userId;
+
+        // Check if partner is active in the socket conversation room
+        const activeSockets = this.server.sockets.adapter.rooms.get(data.conversationId);
+        let partnerInRoom = false;
+        if (activeSockets) {
+          for (const socketId of activeSockets) {
+            const s = this.server.sockets.sockets.get(socketId);
+            if (s && s.data.userId === partnerId) {
+              partnerInRoom = true;
+              break;
+            }
+          }
+        }
+
+        // Send push notification if they are not in the room
+        if (!partnerInRoom) {
+          const [senderUser, partnerUser] = await Promise.all([
+            this.db.user.findUnique({ where: { id: senderId }, select: { displayName: true, username: true } }),
+            this.db.user.findUnique({ where: { id: partnerId }, select: { pushToken: true } }),
+          ]);
+
+          if (partnerUser?.pushToken) {
+            const senderName = senderUser?.displayName || senderUser?.username || 'Someone';
+            const bodyText = data.mediaUrl ? 'Sent a photo' : data.text;
+
+            fetch('https://exp.host/--/api/v2/push/send', {
+              method: 'POST',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: partnerUser.pushToken,
+                sound: 'default',
+                title: senderName,
+                body: bodyText,
+                data: {
+                  conversationId: data.conversationId,
+                  type: 'CHAT_MESSAGE',
+                },
+                priority: 'high',
+              }),
+            }).catch((e) => {
+              this.logger.warn(`Expo push failed for chat to user ${partnerId}: ${e.message}`);
+            });
+          }
+        }
+      }).catch((err) => {
+        this.logger.error(`Error querying push details: ${err.message}`);
       });
 
       return { success: true, messageId: message.id };
     } catch (err) {
       this.logger.error(`Failed to handle sendMessage: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Real-time read receipts: marks messages as read and broadcasts to conversation room.
+   */
+  @SubscribeMessage('markAsRead')
+  async handleMarkAsRead(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const userId = socket.data.userId;
+    if (!userId) return { success: false, error: 'Unauthorized' };
+
+    try {
+      const result = await this.chatService.markConversationMessagesAsRead(
+        data.conversationId,
+        userId,
+      );
+
+      // Broadcast event to notify all participants that messages were read
+      this.server.to(data.conversationId).emit('messagesRead', {
+        conversationId: data.conversationId,
+        readerId: userId,
+      });
+
+      return { success: true, count: result.count };
+    } catch (err) {
+      this.logger.error(`Failed to handle markAsRead: ${err.message}`);
       return { success: false, error: err.message };
     }
   }
