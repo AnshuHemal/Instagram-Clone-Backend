@@ -60,4 +60,10 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsDateString()
   birthday?: string;
+
+  @ApiProperty({ example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', description: 'Expo device push token for push notifications', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  pushToken?: string;
 }

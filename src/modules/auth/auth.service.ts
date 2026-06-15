@@ -786,4 +786,17 @@ export class AuthService {
       })
     );
   }
+
+  async registerPushToken(userId: string, pushToken: string) {
+    if (!pushToken || !pushToken.startsWith('ExponentPushToken[')) {
+      return { success: false, message: 'Invalid Expo push token format.' };
+    }
+
+    await this.db.user.update({
+      where: { id: userId },
+      data: { pushToken },
+    });
+
+    return { success: true };
+  }
 }

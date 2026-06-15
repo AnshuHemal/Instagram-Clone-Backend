@@ -43,6 +43,7 @@ model User {
   isVerified   Boolean   @default(false)
   isOnboarded  Boolean   @default(false)
   onboardingStep String  @default("PERMISSIONS") @db.VarChar(30)
+  pushToken    String?   @db.VarChar(200)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

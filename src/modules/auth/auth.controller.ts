@@ -216,4 +216,18 @@ export class AuthController {
   async refreshTokens(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
   }
+
+  @Post('push-token')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Register Expo push notification device token' })
+  @ApiResponse({ status: 200, description: 'Push token registered successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async registerPushToken(
+    @CurrentUser() user: JwtPayload,
+    @Body('pushToken') pushToken: string,
+  ) {
+    return this.authService.registerPushToken(user.sub, pushToken);
+  }
 }
