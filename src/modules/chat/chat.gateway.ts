@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { OnEvent } from '@nestjs/event-emitter';
 import { ChatService } from './chat.service';
 import { ChatPresenceService } from './chat-presence.service';
 
@@ -170,5 +171,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       senderId,
       isTyping: data.isTyping,
     });
+  }
+
+  @OnEvent('notification.created')
+  handleNotificationCreated(notification: any) {
+    const recipientRoom = `user:${notification.recipientId}`;
+    this.logger.debug(`Broadcasting notification to room: ${recipientRoom}`);
+    this.server.to(recipientRoom).emit('notificationReceived', notification);
   }
 }

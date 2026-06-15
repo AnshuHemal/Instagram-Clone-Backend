@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { NotificationType } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   async createNotification(
     recipientId: string,
@@ -20,7 +24,7 @@ export class NotificationsService {
     if (recipientId === actorId) return null;
 
     try {
-      return await this.db.notification.create({
+      const notification = await this.db.notification.create({
         data: {
           recipientId,
           actorId,
@@ -29,7 +33,22 @@ export class NotificationsService {
           reelId,
           commentText,
         },
+        include: {
+          actor: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              isVerified: true,
+            },
+          },
+        },
       });
+
+      const formatted = this.formatNotification(notification);
+      this.eventEmitter.emit('notification.created', formatted);
+      return formatted;
     } catch (error) {
       this.logger.error('Failed to create notification:', error);
       return null;

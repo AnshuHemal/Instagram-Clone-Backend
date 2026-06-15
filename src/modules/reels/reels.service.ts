@@ -14,6 +14,7 @@ import { CreateReelDto } from './dto/create-reel.dto';
 import { FeedQueryDto } from './dto/feed-query.dto';
 import { RecordViewDto } from './dto/record-view.dto';
 import { PaginatedResult } from '../../common/types/api-response.type';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * ReelsService — orchestrates business logic for the Reels feature.
@@ -33,6 +34,7 @@ export class ReelsService {
     private readonly cache:       CacheService,
     private readonly cloudinary:  CloudinaryService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ── Upload Signature ──────────────────────────────────────────────────────
@@ -201,6 +203,16 @@ export class ReelsService {
     await this.cache.del(CacheKey.reelMeta(reelId));
 
     this.logger.debug(`User ${userId} ${liked ? 'liked' : 'unliked'} reel ${reelId}`);
+
+    if (liked) {
+      await this.notificationsService.createNotification(
+        reel.userId,
+        userId,
+        'LIKE_REEL',
+        undefined,
+        reelId,
+      ).catch((err) => this.logger.error('Failed to trigger notification on reel like:', err));
+    }
 
     return {
       liked,
