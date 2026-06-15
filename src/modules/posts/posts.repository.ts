@@ -248,6 +248,31 @@ export class PostsRepository {
     return posts.map((p) => p.id);
   }
 
+  async findAllFollowingIds(userId: string): Promise<string[]> {
+    const following = await this.db.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+    const followingIds = following.map((f) => f.followingId);
+
+    // Include the user's own posts in their following timeline feed
+    followingIds.push(userId);
+
+    const posts = await this.db.post.findMany({
+      where: {
+        userId: { in: followingIds },
+        isDeleted: false,
+      },
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    return posts.map((p) => p.id);
+  }
+
   async findFeedByIds(ids: string[]): Promise<PostWithDetails[]> {
     return this.db.post.findMany({
       where: {

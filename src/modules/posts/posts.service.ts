@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nest
 import { PostsRepository } from './posts.repository';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreatePostDto } from './dto/create-post.dto';
-import { FeedQueryDto } from './dto/feed-query.dto';
+import { FeedQueryDto, FeedType } from './dto/feed-query.dto';
 import { PaginatedResult } from '../../common/types/api-response.type';
 import { CacheService } from '../cache/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -51,23 +51,31 @@ export class PostsService {
     const limit = query.limit;
     const cursor = query.cursor;
     const userKey = userId || 'anonymous';
-    const idsCacheKey = `posts:feed:random:ids:${userKey}`;
+    const feedType = query.type ?? FeedType.FOR_YOU;
+    const idsCacheKey = `posts:feed:${feedType}:ids:${userKey}`;
 
     let shuffledIds: string[] = [];
 
+    const fetchIds = async () => {
+      if (feedType === FeedType.FOLLOWING && userId) {
+        return this.repo.findAllFollowingIds(userId);
+      }
+      return this.repo.findAllIds();
+    };
+
     if (!cursor) {
-      this.logger.debug(`Generating new randomized posts feed for user: ${userKey}`);
-      const allIds = await this.repo.findAllIds();
+      this.logger.debug(`Generating new randomized posts feed [${feedType}] for user: ${userKey}`);
+      const allIds = await fetchIds();
       shuffledIds = this.shuffle(allIds);
       await this.cache.set(idsCacheKey, shuffledIds, 600); // 10 minutes TTL
     } else {
-      this.logger.debug(`Retrieving cached randomized posts feed for user: ${userKey}, cursor: ${cursor}`);
+      this.logger.debug(`Retrieving cached randomized posts feed [${feedType}] for user: ${userKey}, cursor: ${cursor}`);
       const cachedIds = await this.cache.get<string[]>(idsCacheKey);
       if (cachedIds && cachedIds.length > 0) {
         shuffledIds = cachedIds;
       } else {
         this.logger.warn(`Randomized posts feed cache miss for user ${userKey} during paging. Regenerating feed.`);
-        const allIds = await this.repo.findAllIds();
+        const allIds = await fetchIds();
         shuffledIds = this.shuffle(allIds);
         await this.cache.set(idsCacheKey, shuffledIds, 600);
       }
