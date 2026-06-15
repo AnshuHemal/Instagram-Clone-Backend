@@ -220,6 +220,28 @@ export class PostsService {
     );
   }
 
+  async getUserPosts(targetUserId: string, limit: number, cursor?: string, currentUserId?: string) {
+    const result = await this.repo.findUserPosts(targetUserId, limit, cursor);
+    const items = await Promise.all(
+      result.items.map(async (p) => {
+        const isLiked = currentUserId ? await this.repo.isLikedBy(p.id, currentUserId) : false;
+        return {
+          ...this.formatPostResponse(p),
+          isLiked,
+        };
+      })
+    );
+
+    return {
+      success: true,
+      data: {
+        posts: items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      },
+    };
+  }
+
   private formatPostResponse(post: any) {
     return {
       id: post.id,

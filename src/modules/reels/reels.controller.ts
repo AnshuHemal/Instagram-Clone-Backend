@@ -101,6 +101,20 @@ export class ReelsController {
   // GET /api/reels/feed
   // ──────────────────────────────────────────────────────────────────────────
 
+  @Get('user/:userId')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get reels uploaded by a specific user' })
+  @ApiResponse({ status: 200, description: 'User reels page returned' })
+  async getUserReels(
+    @Param('userId', ParseUUIDPipe) targetUserId: string,
+    @Query('limit') limitStr?: string,
+    @Query('cursor') cursor?: string,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 12;
+    return this.reelsService.getUserReels(targetUserId, limit, cursor, user?.sub);
+  }
+
   @Get('feed')
   @SkipAuth()
   @ApiOperation({

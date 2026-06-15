@@ -381,6 +381,29 @@ export class ReelsService {
     }));
   }
 
+  async getUserReels(targetUserId: string, limit: number, cursor?: string, currentUserId?: string) {
+    const result = await this.repo.findUserReels(targetUserId, limit, cursor);
+    const items = await Promise.all(
+      result.items.map(async (r) => {
+        const isLiked = currentUserId ? await this.repo.isLikedBy(r.id, currentUserId) : false;
+        return {
+          ...this.formatReelResponse(r),
+          user: r.user,
+          isLiked,
+        };
+      })
+    );
+
+    return {
+      success: true,
+      data: {
+        reels: items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      },
+    };
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /**

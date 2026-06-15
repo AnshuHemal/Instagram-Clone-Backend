@@ -74,6 +74,53 @@ export class ReelsRepository {
     return { items, nextCursor, hasMore };
   }
 
+  async findUserReels(
+    userId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<PaginatedResult<ReelWithUser>> {
+    const take = limit + 1;
+
+    const where: Prisma.ReelWhereInput = {
+      userId,
+      status: ReelStatus.READY,
+      isDeleted: false,
+    };
+
+    if (cursor) {
+      const cursorReel = await this.db.reel.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+      if (cursorReel) {
+        where.createdAt = { lt: cursorReel.createdAt };
+      }
+    }
+
+    const reels = await this.db.reel.findMany({
+      where,
+      take,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        user: {
+          select: {
+            id:          true,
+            username:    true,
+            displayName: true,
+            avatarUrl:   true,
+            isVerified:  true,
+          },
+        },
+      },
+    });
+
+    const hasMore = reels.length === take;
+    const items   = hasMore ? reels.slice(0, limit) : reels;
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    return { items, nextCursor, hasMore };
+  }
+
   async findAllReadyIds(): Promise<string[]> {
     const reels = await this.db.reel.findMany({
       where: {

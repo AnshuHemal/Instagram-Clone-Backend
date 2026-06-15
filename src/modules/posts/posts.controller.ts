@@ -96,6 +96,20 @@ export class PostsController {
     };
   }
 
+  @Get('user/:userId')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get posts created by a specific user' })
+  @ApiResponse({ status: 200, description: 'User posts returned' })
+  async getUserPosts(
+    @Param('userId', ParseUUIDPipe) targetUserId: string,
+    @Query('limit') limitStr?: string,
+    @Query('cursor') cursor?: string,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 12;
+    return this.postsService.getUserPosts(targetUserId, limit, cursor, user?.sub);
+  }
+
   @Get('search')
   @ApiOperation({ summary: 'Search posts by caption or location' })
   @ApiResponse({ status: 200, description: 'Matched posts returned' })

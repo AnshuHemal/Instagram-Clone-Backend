@@ -65,6 +65,57 @@ export class PostsRepository {
     return { items, nextCursor, hasMore };
   }
 
+  async findUserPosts(
+    userId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<PaginatedResult<PostWithDetails>> {
+    const take = limit + 1;
+
+    const where: Prisma.PostWhereInput = {
+      userId,
+      isDeleted: false,
+    };
+
+    if (cursor) {
+      const cursorPost = await this.db.post.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+      if (cursorPost) {
+        where.createdAt = { lt: cursorPost.createdAt };
+      }
+    }
+
+    const posts = await this.db.post.findMany({
+      where,
+      take,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        user: {
+          select: {
+            id:          true,
+            username:    true,
+            displayName: true,
+            avatarUrl:   true,
+            isVerified:  true,
+          },
+        },
+        media: {
+          orderBy: {
+            orderIndex: 'asc',
+          },
+        },
+      },
+    });
+
+    const hasMore = posts.length === take;
+    const items   = hasMore ? posts.slice(0, limit) : posts;
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    return { items, nextCursor, hasMore };
+  }
+
   // ── Single Post ───────────────────────────────────────────────────────────
 
   async findById(id: string): Promise<PostWithDetails | null> {
