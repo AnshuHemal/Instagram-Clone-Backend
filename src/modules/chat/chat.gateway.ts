@@ -17,6 +17,8 @@ import { ChatPresenceService } from './chat-presence.service';
   cors: {
     origin: '*',
   },
+  pingInterval: 10000,
+  pingTimeout: 5000,
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
