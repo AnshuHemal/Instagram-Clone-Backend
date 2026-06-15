@@ -329,6 +329,58 @@ export class ReelsService {
     this.logger.error(`Reel [${reel.id}] FAILED: ${reason}`);
   }
 
+  async addComment(reelId: string, userId: string, text: string) {
+    const reel = await this.repo.findById(reelId);
+    if (!reel) throw new NotFoundException(`Reel ${reelId} not found`);
+
+    const comment = await this.repo.addComment(reelId, userId, text);
+
+    // Invalidate reel metadata cache to reflect comment count change
+    await this.cache.del(CacheKey.reelMeta(reelId));
+
+    // Create comment notification
+    await this.notificationsService.createNotification(
+      reel.userId,
+      userId,
+      'COMMENT_REEL',
+      undefined,
+      reelId,
+      text,
+    ).catch((err) => this.logger.error('Failed to trigger notification on reel comment:', err));
+
+    return {
+      id: comment.id,
+      text: comment.text,
+      createdAt: comment.createdAt,
+      user: {
+        id: comment.user.id,
+        username: comment.user.username,
+        displayName: comment.user.displayName,
+        avatarUrl: comment.user.avatarUrl,
+        isVerified: comment.user.isVerified,
+      },
+    };
+  }
+
+  async getComments(reelId: string) {
+    const reel = await this.repo.findById(reelId);
+    if (!reel) throw new NotFoundException(`Reel ${reelId} not found`);
+
+    const comments = await this.repo.findComments(reelId);
+    return comments.map((c) => ({
+      id: c.id,
+      text: c.text,
+      createdAt: c.createdAt,
+      user: {
+        id: c.user.id,
+        username: c.user.username,
+        displayName: c.user.displayName,
+        avatarUrl: c.user.avatarUrl,
+        isVerified: c.user.isVerified,
+      },
+    }));
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /**

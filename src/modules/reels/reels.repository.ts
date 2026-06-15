@@ -243,4 +243,52 @@ export class ReelsRepository {
       ),
     );
   }
+
+  async addComment(
+    reelId: string,
+    userId: string,
+    text: string,
+  ) {
+    return this.db.$transaction(async (tx) => {
+      const comment = await tx.reelComment.create({
+        data: { reelId, userId, text },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              isVerified: true,
+            },
+          },
+        },
+      });
+
+      await tx.reel.update({
+        where: { id: reelId },
+        data: { commentsCount: { increment: 1 } },
+      });
+
+      return comment;
+    });
+  }
+
+  async findComments(reelId: string) {
+    return this.db.reelComment.findMany({
+      where: { reelId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+            isVerified: true,
+          },
+        },
+      },
+    });
+  }
 }

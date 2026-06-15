@@ -297,4 +297,37 @@ export class PostsRepository {
       },
     });
   }
+
+  async search(query: string): Promise<PostWithDetails[]> {
+    const term = query.trim();
+    if (!term) return [];
+
+    return this.db.post.findMany({
+      where: {
+        OR: [
+          { caption: { contains: term, mode: 'insensitive' } },
+          { location: { contains: term, mode: 'insensitive' } },
+        ],
+        isDeleted: false,
+      },
+      include: {
+        user: {
+          select: {
+            id:          true,
+            username:    true,
+            displayName: true,
+            avatarUrl:   true,
+            isVerified:  true,
+          },
+        },
+        media: {
+          orderBy: {
+            orderIndex: 'asc',
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+  }
 }

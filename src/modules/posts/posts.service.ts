@@ -207,6 +207,19 @@ export class PostsService {
     return { deleted };
   }
 
+  async searchPosts(query: string, userId?: string) {
+    const posts = await this.repo.search(query);
+    return Promise.all(
+      posts.map(async (p) => {
+        const isLiked = userId ? await this.repo.isLikedBy(p.id, userId) : false;
+        return {
+          ...this.formatPostResponse(p),
+          isLiked,
+        };
+      })
+    );
+  }
+
   private formatPostResponse(post: any) {
     return {
       id: post.id,

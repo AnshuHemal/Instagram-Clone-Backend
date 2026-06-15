@@ -96,6 +96,22 @@ export class PostsController {
     };
   }
 
+  @Get('search')
+  @ApiOperation({ summary: 'Search posts by caption or location' })
+  @ApiResponse({ status: 200, description: 'Matched posts returned' })
+  async searchPosts(
+    @Query('q') query: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const posts = await this.postsService.searchPosts(query || '', user?.sub);
+    return {
+      success: true,
+      message: 'Posts searched',
+      data: posts,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Post(':id/like')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Toggle like status of a post' })

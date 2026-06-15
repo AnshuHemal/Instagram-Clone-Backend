@@ -54,6 +54,7 @@ model User {
   posts        Post[]
   postLikes    PostLike[]
   postComments PostComment[]
+  reelComments ReelComment[]
   notifications        Notification[] @relation("notificationRecipient")
   actorNotifications   Notification[] @relation("notificationActor")
   chatParticipants     ConversationParticipant[]
@@ -154,8 +155,10 @@ model ReelComment {
   updatedAt DateTime @updatedAt
 
   reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([reelId, createdAt(sort: Desc)])
+  @@index([userId])
 }
 
 /// Follow relationships between users.

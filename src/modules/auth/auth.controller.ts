@@ -117,6 +117,25 @@ export class AuthController {
     return this.authService.getSuggestions(user.sub);
   }
 
+  @Get('users/search')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Search users by username or displayName' })
+  @ApiResponse({ status: 200, description: 'Matched users returned.' })
+  async searchUsers(
+    @CurrentUser() user: JwtPayload,
+    @Query('q') query: string,
+  ) {
+    const result = await this.authService.searchUsers(query || '', user.sub);
+    return {
+      success: true,
+      message: 'Users retrieved',
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Post('users/follow-multiple')
   @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)

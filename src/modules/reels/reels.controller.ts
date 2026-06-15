@@ -256,4 +256,38 @@ export class ReelsController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  @Post(':id/comment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Add a comment to a reel' })
+  @ApiParam({ name: 'id', description: 'Reel UUID' })
+  @ApiResponse({ status: 200, description: 'Comment added' })
+  async addComment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body('text') text: string,
+  ) {
+    const comment = await this.reelsService.addComment(id, user.sub, text);
+    return {
+      success: true,
+      message: 'Comment added',
+      data: comment,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get(':id/comments')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get comments of a reel' })
+  @ApiParam({ name: 'id', description: 'Reel UUID' })
+  @ApiResponse({ status: 200, description: 'Comments returned' })
+  async getComments(@Param('id', ParseUUIDPipe) id: string) {
+    const comments = await this.reelsService.getComments(id);
+    return {
+      success: true,
+      message: 'Comments loaded',
+      data: comments,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

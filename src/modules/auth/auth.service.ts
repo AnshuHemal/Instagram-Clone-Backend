@@ -749,4 +749,41 @@ export class AuthService {
       refreshToken: newRefreshToken,
     };
   }
+
+  async searchUsers(query: string, currentUserId: string) {
+    const term = query.trim();
+    if (!term) return [];
+
+    const users = await this.db.user.findMany({
+      where: {
+        OR: [
+          { username: { contains: term, mode: 'insensitive' } },
+          { displayName: { contains: term, mode: 'insensitive' } },
+        ],
+        isOnboarded: true,
+      },
+      take: 20,
+    });
+
+    return Promise.all(
+      users.map(async (u) => {
+        const followRecord = await this.db.follow.findUnique({
+          where: {
+            followerId_followingId: {
+              followerId: currentUserId,
+              followingId: u.id,
+            },
+          },
+        });
+        return {
+          id: u.id,
+          username: u.username,
+          displayName: u.displayName,
+          avatarUrl: u.avatarUrl,
+          isVerified: u.isVerified,
+          isFollowing: !!followRecord,
+        };
+      })
+    );
+  }
 }
