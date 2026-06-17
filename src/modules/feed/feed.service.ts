@@ -102,7 +102,7 @@ export class FeedService {
       items = await this.getFollowingFeed(userId, 50);
     } else {
       // For You — ranked algorithm
-      items = await this.getForYouFeed(userId);
+      items = await this.getForYouFeed(userId ?? '');
     }
 
     // Cache the full result set (not just one page)
