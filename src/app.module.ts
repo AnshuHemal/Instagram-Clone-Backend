@@ -15,6 +15,8 @@ import { PostsModule } from './modules/posts/posts.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { StoriesModule } from './modules/stories/stories.module';
+import { FeedModule } from './modules/feed/feed.module';
+import { HashtagModule } from './modules/hashtags/hashtag.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -66,6 +68,8 @@ import { HealthController } from './health.controller';
     NotificationsModule, // User notifications
     ChatModule,       // Real-time Chat Module
     StoriesModule,    // Dynamic expiring Stories Module
+    FeedModule,       // Unified ranked feed (posts + reels)
+    HashtagModule,    // Hashtag extraction, trending, search
   ],
   controllers: [HealthController],
 })

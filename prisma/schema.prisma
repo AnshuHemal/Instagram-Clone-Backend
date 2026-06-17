@@ -177,6 +177,35 @@ model Follow {
   @@index([followingId])
 }
 
+// ─── Hashtag Models ───────────────────────────────────────────────────────────
+
+/// Tracks unique hashtags for explore/search.
+model Hashtag {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tag       String   @unique @db.VarChar(100)
+  postCount Int      @default(0)
+  createdAt DateTime @default(now())
+
+  posts     ContentHashtag[]
+
+  @@index([tag])
+}
+
+/// Polymorphic join table linking hashtags to posts, reels, or comments.
+model ContentHashtag {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hashtagId String   @db.Uuid
+  contentId String   @db.Uuid       // postId, reelId, or commentId
+  contentType String @db.VarChar(20) // "POST", "REEL", "COMMENT"
+  createdAt DateTime @default(now())
+
+  hashtag Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@index([hashtagId])
+  @@index([contentId, contentType])
+  @@index([contentType, createdAt(sort: Desc)])
+}
+
 // ─── Post Models ──────────────────────────────────────────────────────────────
 
 model Post {
