@@ -41,8 +41,11 @@ export class PostsController {
     description: 'Returns parameters for secure direct client uploads of post media.',
   })
   @ApiResponse({ status: 200, description: 'Signed upload parameters returned' })
-  getUploadSignature(@CurrentUser() user: JwtPayload) {
-    const signature = this.postsService.getUploadSignature(user.sub);
+  getUploadSignature(
+    @CurrentUser() user: JwtPayload,
+    @Query('resourceType') resourceType?: 'video' | 'image',
+  ) {
+    const signature = this.postsService.getUploadSignature(user.sub, resourceType || 'image');
     return {
       success: true,
       message: 'Upload signature generated',

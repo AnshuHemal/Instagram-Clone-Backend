@@ -52,7 +52,6 @@ export class StoriesService {
           {
             folder: 'stories',
             resource_type: resourceType,
-            // If video, limit duration to 15 seconds. If image, optimize quality.
             ...(isVideo
               ? { transformation: [{ duration: 15, crop: 'limit' }] }
               : { transformation: [{ quality: 'auto:good' }] }),
@@ -116,7 +115,7 @@ export class StoriesService {
           where: { viewerId: userId },
         },
       },
-      orderBy: { createdAt: 'asc' }, // Order oldest first so users view sequentially
+      orderBy: { createdAt: 'asc' },
     });
 
     const userGroupsMap = new Map<string, any>();
@@ -131,7 +130,7 @@ export class StoriesService {
           username: u.username,
           displayName: u.displayName || u.username,
           avatar: u.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-          isSeen: true, // Defaults to seen, will flip to false if any active story is unseen
+          isSeen: true,
           stories: [],
         });
       }
@@ -152,7 +151,6 @@ export class StoriesService {
 
     const groups = Array.from(userGroupsMap.values());
 
-    // Sort: current user first, then unseen groups, then seen groups
     return groups.sort((a, b) => {
       if (a.userId === userId) return -1;
       if (b.userId === userId) return 1;
@@ -165,7 +163,6 @@ export class StoriesService {
    * Mark a specific story as viewed by the user.
    */
   async viewStory(userId: string, storyId: string) {
-    // Check if story exists and is active
     const story = await this.db.story.findUnique({
       where: { id: storyId },
     });
@@ -187,17 +184,39 @@ export class StoriesService {
   }
 
   /**
-   * Hourly Cron Job: Cleans up expired stories.
-   * Deletes database logs and requests Cloudinary to remove media assets.
+   * Fetch all of a user's own stories (active + expired) for the archive/highlight picker.
+   * Returns stories in reverse chronological order (newest first).
+   */
+  async getStoryArchive(userId: string) {
+    return this.db.story.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        mediaUrl: true,
+        mediaType: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+    });
+  }
+
+  /**
+   * Hourly Cron Job: Cleans up expired stories that are NOT part of any Highlight.
+   * Stories added to a Highlight are preserved until the Highlight is deleted.
    */
   @Cron(CronExpression.EVERY_HOUR)
   async handleExpiredStoriesCleanup() {
     this.logger.log('⏳ Running expired stories hourly cleanup cron task...');
     const now = new Date();
 
+    // Only delete expired stories that are not referenced by any highlight
     const expiredStories = await this.db.story.findMany({
       where: {
         expiresAt: { lt: now },
+        highlights: {
+          none: {}, // Skip stories that belong to at least one highlight
+        },
       },
       select: {
         id: true,
@@ -224,7 +243,6 @@ export class StoriesService {
       }
     }
 
-    // Delete records from database
     const deleteResult = await this.db.story.deleteMany({
       where: {
         id: { in: expiredStories.map((s) => s.id) },

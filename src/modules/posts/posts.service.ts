@@ -18,8 +18,8 @@ export class PostsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  getUploadSignature(userId: string) {
-    return this.cloudinary.generateUploadSignature(userId);
+  getUploadSignature(userId: string, resourceType: 'video' | 'image' = 'image') {
+    return this.cloudinary.generateUploadSignature(userId, resourceType);
   }
 
   async createPost(userId: string, dto: CreatePostDto) {

@@ -62,6 +62,7 @@ model User {
   sentMessages         Message[]
   stories              Story[]
   viewedStories        StoryViewer[]
+  highlights           Highlight[]
 
   @@index([username])
 }
@@ -310,10 +311,12 @@ model Story {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   viewers   StoryViewer[]
+  highlights HighlightStory[]
 
   @@index([expiresAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model StoryViewer {
@@ -325,5 +328,36 @@ model StoryViewer {
   viewer User  @relation(fields: [viewerId], references: [id], onDelete: Cascade)
 
   @@id([storyId, viewerId])
+}
+
+// ─── Highlights Models ────────────────────────────────────────────────────────
+
+/// A permanent collection of stories curated by the user.
+model Highlight {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @db.Uuid
+  title     String           @db.VarChar(50)
+  coverUrl  String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stories   HighlightStory[]
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Join table linking highlights to individual story items.
+model HighlightStory {
+  highlightId String    @db.Uuid
+  storyId     String    @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  highlight   Highlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  story       Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@id([highlightId, storyId])
+  @@index([highlightId])
+  @@index([storyId])
 }
 

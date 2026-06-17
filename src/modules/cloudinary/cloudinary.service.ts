@@ -82,25 +82,35 @@ export class CloudinaryService implements OnModuleInit {
    * The `eager` transformation tells Cloudinary to immediately start
    * HLS transcoding after the upload completes.
    */
-  generateUploadSignature(userId: string): UploadSignatureResult {
+  generateUploadSignature(userId: string, resourceType: 'video' | 'image' = 'video'): UploadSignatureResult {
     const timestamp = Math.round(Date.now() / 1000);
 
-    // HLS adaptive streaming eager transformation:
-    // sp_hd = streaming profile "high definition" (includes 360p/480p/720p/1080p tiers)
-    const eagerTransformation = 'sp_hd/fl_attachment';
+    const folder = resourceType === 'video'
+      ? this.reelsFolder
+      : this.config.get<string>('CLOUDINARY_POSTS_FOLDER', 'posts');
+
+    const uploadPreset = resourceType === 'video'
+      ? this.config.get<string>('CLOUDINARY_UPLOAD_PRESET', 'reels_preset')
+      : this.config.get<string>('CLOUDINARY_IMAGE_UPLOAD_PRESET', 'posts_preset');
 
     const paramsToSign: Record<string, string | number> = {
       timestamp,
-      folder:               this.reelsFolder,
-      resource_type:        'video',
-      upload_preset:        this.config.get('CLOUDINARY_UPLOAD_PRESET', 'reels_preset'),
-      eager:                eagerTransformation,
-      eager_async:          'true',
-      notification_url:     this.webhookUrl,
+      folder,
+      resource_type:        resourceType,
+      upload_preset:        uploadPreset,
       context:              `user_id=${userId}`,
-      // Auto-generate a thumbnail at the 1-second mark
-      eager_notification_url: this.webhookUrl,
     };
+
+    let eagerTransformation = '';
+    if (resourceType === 'video') {
+      // HLS adaptive streaming eager transformation:
+      // sp_hd = streaming profile "high definition" (includes 360p/480p/720p/1080p tiers)
+      eagerTransformation = 'sp_hd/fl_attachment';
+      paramsToSign.eager = eagerTransformation;
+      paramsToSign.eager_async = 'true';
+      paramsToSign.notification_url = this.webhookUrl;
+      paramsToSign.eager_notification_url = this.webhookUrl;
+    }
 
     // Build the string to sign: alphabetically sorted key=value pairs
     const stringToSign = Object.keys(paramsToSign)
@@ -113,17 +123,17 @@ export class CloudinaryService implements OnModuleInit {
       .update(stringToSign + this.apiSecret)
       .digest('hex');
 
-    this.logger.debug(`Upload signature generated for user: ${userId}`);
+    this.logger.debug(`Upload signature generated for user: ${userId} (${resourceType})`);
 
     return {
       signature,
       apiKey:        this.apiKey,
       cloudName:     this.cloudName,
       timestamp,
-      folder:        this.reelsFolder,
-      uploadPreset:  this.config.get('CLOUDINARY_UPLOAD_PRESET', 'reels_preset'),
+      folder,
+      uploadPreset,
       eager:         eagerTransformation,
-      notificationUrl: this.webhookUrl,
+      notificationUrl: resourceType === 'video' ? this.webhookUrl : '',
     };
   }
 
