@@ -251,4 +251,117 @@ export class StoriesService {
 
     this.logger.log(`🗑️ Successfully deleted ${deleteResult.count} expired stories from PostgreSQL.`);
   }
+
+  // ── Highlights ─────────────────────────────────────────────────────────────
+
+  async createHighlight(userId: string, title: string, coverUrl?: string, storyIds?: string[]) {
+    const highlight = await this.db.highlight.create({
+      data: {
+        userId,
+        title,
+        coverUrl,
+        ...(storyIds && storyIds.length > 0
+          ? {
+              stories: {
+                createMany: {
+                  data: storyIds.map((storyId, i) => ({ storyId, orderIndex: i })),
+                  skipDuplicates: true,
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        stories: {
+          include: { story: { select: { id: true, mediaUrl: true, mediaType: true, createdAt: true } } },
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+    });
+    return { success: true, data: highlight };
+  }
+
+  async getHighlights(userId: string) {
+    const highlights = await this.db.highlight.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        stories: {
+          include: { story: { select: { id: true, mediaUrl: true, mediaType: true, createdAt: true } } },
+          orderBy: { orderIndex: 'asc' },
+          take: 1,
+        },
+        _count: { select: { stories: true } },
+      },
+    });
+    return {
+      success: true,
+      data: highlights.map(h => ({
+        id: h.id,
+        title: h.title,
+        coverUrl: h.coverUrl || h.stories[0]?.story?.mediaUrl,
+        storiesCount: h._count.stories,
+        createdAt: h.createdAt,
+      })),
+    };
+  }
+
+  async getHighlightStories(highlightId: string) {
+    const stories = await this.db.highlightStory.findMany({
+      where: { highlightId },
+      orderBy: { orderIndex: 'asc' },
+      include: {
+        story: {
+          select: { id: true, mediaUrl: true, mediaType: true, createdAt: true, userId: true },
+        },
+      },
+    });
+    return { success: true, data: stories.map(hs => hs.story) };
+  }
+
+  async addStoryToHighlight(highlightId: string, storyId: string, userId: string) {
+    const highlight = await this.db.highlight.findFirst({ where: { id: highlightId, userId } });
+    if (!highlight) throw new BadRequestException('Highlight not found or access denied.');
+
+    const maxOrder = await this.db.highlightStory.aggregate({
+      where: { highlightId },
+      _max: { orderIndex: true },
+    });
+    const nextOrder = (maxOrder._max.orderIndex ?? -1) + 1;
+
+    await this.db.highlightStory.upsert({
+      where: { highlightId_storyId: { highlightId, storyId } },
+      update: {},
+      create: { highlightId, storyId, orderIndex: nextOrder },
+    });
+    return { success: true, message: 'Story added to highlight.' };
+  }
+
+  async removeStoryFromHighlight(highlightId: string, storyId: string, userId: string) {
+    const highlight = await this.db.highlight.findFirst({ where: { id: highlightId, userId } });
+    if (!highlight) throw new BadRequestException('Highlight not found or access denied.');
+
+    await this.db.highlightStory.deleteMany({ where: { highlightId, storyId } });
+    return { success: true, message: 'Story removed from highlight.' };
+  }
+
+  async updateHighlight(highlightId: string, userId: string, data: { title?: string; coverUrl?: string }) {
+    const highlight = await this.db.highlight.findFirst({ where: { id: highlightId, userId } });
+    if (!highlight) throw new BadRequestException('Highlight not found or access denied.');
+
+    const updated = await this.db.highlight.update({
+      where: { id: highlightId },
+      data: { title: data.title, coverUrl: data.coverUrl },
+    });
+    return { success: true, data: updated };
+  }
+
+  async deleteHighlight(highlightId: string, userId: string) {
+    const highlight = await this.db.highlight.findFirst({ where: { id: highlightId, userId } });
+    if (!highlight) throw new BadRequestException('Highlight not found or access denied.');
+
+    await this.db.highlight.delete({ where: { id: highlightId } });
+    return { success: true, message: 'Highlight deleted.' };
+  }
 }
+

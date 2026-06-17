@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Patch, Body, Param, Query, HttpCode, HttpStatus, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Query, HttpCode, HttpStatus, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseUUIDPipe } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -154,15 +154,55 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Follow a user' })
-  @ApiResponse({ status: 200, description: 'Followed successfully.' })
-  @ApiResponse({ status: 400, description: 'Cannot follow self or user not found.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiOperation({ summary: 'Follow a user (creates FollowRequest for private accounts)' })
+  @ApiResponse({ status: 200, description: 'Followed or follow request sent.' })
   async followUser(
     @CurrentUser() user: JwtPayload,
     @Param('id') targetId: string,
   ) {
     return this.authService.followUser(user.sub, targetId);
+  }
+
+  @Delete('users/:id/follow-request')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel outgoing follow request' })
+  async cancelFollowRequest(@CurrentUser() user: JwtPayload, @Param('id') targetId: string) {
+    return this.authService.cancelFollowRequest(user.sub, targetId);
+  }
+
+  @Get('users/follow-requests')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get incoming follow requests for current user' })
+  async getFollowRequests(@CurrentUser() user: JwtPayload) {
+    return this.authService.getFollowRequests(user.sub);
+  }
+
+  @Patch('users/follow-requests/:id/accept')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Accept a follow request' })
+  async acceptFollowRequest(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) requestId: string,
+  ) {
+    return this.authService.respondToFollowRequest(requestId, user.sub, true);
+  }
+
+  @Patch('users/follow-requests/:id/decline')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Decline a follow request' })
+  async declineFollowRequest(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) requestId: string,
+  ) {
+    return this.authService.respondToFollowRequest(requestId, user.sub, false);
   }
 
   @Delete('users/:id/follow')

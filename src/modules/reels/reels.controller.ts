@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -266,6 +267,30 @@ export class ReelsController {
     return {
       success: true,
       message: 'Reel deleted',
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // PATCH /api/reels/:id
+  // ──────────────────────────────────────────────────────────────────────────
+
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Edit a reel description/audioName (owner only)' })
+  @ApiResponse({ status: 200, description: 'Reel updated' })
+  @ApiResponse({ status: 403, description: 'Not your reel' })
+  async updateReel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body('caption') caption?: string,
+    @Body('audioName') audioName?: string,
+  ) {
+    const result = await this.reelsService.updateReel(id, user.sub, { caption, audioName });
+    return {
+      success: true,
+      message: 'Reel updated',
       data: result,
       timestamp: new Date().toISOString(),
     };

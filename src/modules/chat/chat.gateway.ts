@@ -121,7 +121,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { conversationId: string; text: string; mediaUrl?: string },
+    @MessageBody() data: { 
+      conversationId: string; 
+      text: string; 
+      mediaUrl?: string;
+      referenceType?: string;
+      referenceId?: string;
+      storyId?: string;
+    },
   ) {
     const senderId = socket.data.userId;
     if (!senderId) {
@@ -136,6 +143,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         senderId,
         data.text,
         data.mediaUrl,
+        data.referenceType,
+        data.referenceId,
+        data.storyId,
       );
 
       // Broadcast the persisted message to the room (including sender)
@@ -144,65 +154,75 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Also trigger a global inbox update notification for unjoined participants
       this.server.emit('inboxUpdated', {
         conversationId: data.conversationId,
-        lastMessage: message.mediaUrl ? 'Sent a photo' : message.text,
+        lastMessage: message.mediaUrl ? 'Sent a photo' : (message.text || 'Shared a message'),
         lastMessageTime: message.createdAt,
         lastMessageSenderId: senderId,
       });
 
-      // Expo Push Notification logic for background/inactive partner
+      // Expo Push Notification logic for background/inactive partner(s)
       this.db.conversation.findUnique({
         where: { id: data.conversationId },
         include: { participants: { select: { userId: true } } },
       }).then(async (conv) => {
         if (!conv) return;
-        const partner = conv.participants.find(p => p.userId !== senderId);
-        if (!partner) return;
 
-        const partnerId = partner.userId;
+        const partners = conv.participants.filter(p => p.userId !== senderId);
+        if (partners.length === 0) return;
 
-        // Check if partner is active in the socket conversation room
+        const senderUser = await this.db.user.findUnique({ 
+          where: { id: senderId }, 
+          select: { displayName: true, username: true } 
+        });
+        const senderName = senderUser?.displayName || senderUser?.username || 'Someone';
+        const bodyText = data.mediaUrl ? 'Sent a photo' : (data.text || 'Shared a message');
+
         const activeSockets = this.server.sockets.adapter.rooms.get(data.conversationId);
-        let partnerInRoom = false;
-        if (activeSockets) {
-          for (const socketId of activeSockets) {
-            const s = this.server.sockets.sockets.get(socketId);
-            if (s && s.data.userId === partnerId) {
-              partnerInRoom = true;
-              break;
+
+        for (const partner of partners) {
+          const partnerId = partner.userId;
+
+          // Check if partner is active in the socket conversation room
+          let partnerInRoom = false;
+          if (activeSockets) {
+            for (const socketId of activeSockets) {
+              const s = this.server.sockets.sockets.get(socketId);
+              if (s && s.data.userId === partnerId) {
+                partnerInRoom = true;
+                break;
+              }
             }
           }
-        }
 
-        // Send push notification if they are not in the room
-        if (!partnerInRoom) {
-          const [senderUser, partnerUser] = await Promise.all([
-            this.db.user.findUnique({ where: { id: senderId }, select: { displayName: true, username: true } }),
-            this.db.user.findUnique({ where: { id: partnerId }, select: { pushToken: true } }),
-          ]);
-
-          if (partnerUser?.pushToken) {
-            const senderName = senderUser?.displayName || senderUser?.username || 'Someone';
-            const bodyText = data.mediaUrl ? 'Sent a photo' : data.text;
-
-            fetch('https://exp.host/--/api/v2/push/send', {
-              method: 'POST',
-              headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                to: partnerUser.pushToken,
-                sound: 'default',
-                title: senderName,
-                body: bodyText,
-                data: {
-                  conversationId: data.conversationId,
-                  type: 'CHAT_MESSAGE',
-                },
-                priority: 'high',
-              }),
-            }).catch((e) => {
-              this.logger.warn(`Expo push failed for chat to user ${partnerId}: ${e.message}`);
+          // Send push notification if they are not in the room
+          if (!partnerInRoom) {
+            this.db.user.findUnique({ 
+              where: { id: partnerId }, 
+              select: { pushToken: true } 
+            }).then((partnerUser) => {
+              if (partnerUser?.pushToken) {
+                fetch('https://exp.host/--/api/v2/push/send', {
+                  method: 'POST',
+                  headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    to: partnerUser.pushToken,
+                    sound: 'default',
+                    title: conv.isGroup ? `${conv.groupName || 'Group Chat'}` : senderName,
+                    body: conv.isGroup ? `${senderName}: ${bodyText}` : bodyText,
+                    data: {
+                      conversationId: data.conversationId,
+                      type: 'CHAT_MESSAGE',
+                    },
+                    priority: 'high',
+                  }),
+                }).catch((e) => {
+                  this.logger.warn(`Expo push failed for chat to user ${partnerId}: ${e.message}`);
+                });
+              }
+            }).catch((err) => {
+              this.logger.warn(`Failed to fetch user token for user ${partnerId}: ${err.message}`);
             });
           }
         }

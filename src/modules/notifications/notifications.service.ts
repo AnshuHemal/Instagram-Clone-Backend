@@ -233,6 +233,12 @@ export class NotificationsService {
       case 'FOLLOW':
         message = 'started following you.';
         break;
+      case 'FOLLOW_REQUEST':
+        message = 'requested to follow you.';
+        break;
+      case 'FOLLOW_REQUEST_ACCEPTED':
+        message = 'accepted your follow request.';
+        break;
       case 'LIKE_POST':
         message = 'liked your post.';
         break;

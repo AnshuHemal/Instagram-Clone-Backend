@@ -581,44 +581,73 @@ export class AuthService {
       throw new BadRequestException('User not found.');
     }
 
+    // Check if already following
     const existing = await this.db.follow.findUnique({
-      where: {
-        followerId_followingId: {
-          followerId: userId,
-          followingId: targetId,
-        },
-      },
+      where: { followerId_followingId: { followerId: userId, followingId: targetId } },
     });
-
     if (existing) {
-      return { success: true, following: true, message: 'Already following.' };
+      return { success: true, following: true, requested: false, message: 'Already following.' };
     }
 
-    await this.db.follow.create({
-      data: {
-        followerId: userId,
-        followingId: targetId,
-      },
-    });
+    // If private account, create a FollowRequest instead
+    if (targetUser.isPrivate) {
+      const existingRequest = await this.db.followRequest.findUnique({
+        where: { requesterId_targetId: { requesterId: userId, targetId } },
+      });
+      if (existingRequest) {
+        return { success: true, following: false, requested: true, message: 'Follow request already sent.' };
+      }
+      await this.db.followRequest.create({ data: { requesterId: userId, targetId } });
+      await this.notificationsService.createNotification(targetId, userId, 'FOLLOW_REQUEST');
+      return { success: true, following: false, requested: true, message: 'Follow request sent.' };
+    }
 
-    // Create follow notification
-    await this.notificationsService.createNotification(
-      targetId,
-      userId,
-      'FOLLOW',
-    );
+    await this.db.follow.create({ data: { followerId: userId, followingId: targetId } });
+    await this.notificationsService.createNotification(targetId, userId, 'FOLLOW');
 
     const [followersCount, followingCount] = await Promise.all([
-      this.db.follow.count({ where: { followingId: userId } }),
+      this.db.follow.count({ where: { followingId: targetId } }),
       this.db.follow.count({ where: { followerId: userId } }),
     ]);
 
-    return {
-      success: true,
-      following: true,
-      followersCount,
-      followingCount,
-    };
+    return { success: true, following: true, requested: false, followersCount, followingCount };
+  }
+
+  async cancelFollowRequest(userId: string, targetId: string) {
+    await this.db.followRequest.deleteMany({ where: { requesterId: userId, targetId } });
+    return { success: true, message: 'Follow request cancelled.' };
+  }
+
+  async getFollowRequests(userId: string) {
+    const requests = await this.db.followRequest.findMany({
+      where: { targetId: userId, status: 'PENDING' },
+      include: {
+        requester: {
+          select: { id: true, username: true, displayName: true, avatarUrl: true, isVerified: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { success: true, data: requests };
+  }
+
+  async respondToFollowRequest(requestId: string, userId: string, accept: boolean) {
+    const request = await this.db.followRequest.findFirst({
+      where: { id: requestId, targetId: userId, status: 'PENDING' },
+    });
+    if (!request) throw new BadRequestException('Follow request not found.');
+
+    if (accept) {
+      await this.db.$transaction([
+        this.db.followRequest.update({ where: { id: requestId }, data: { status: 'ACCEPTED' } }),
+        this.db.follow.create({ data: { followerId: request.requesterId, followingId: userId } }),
+      ]);
+      await this.notificationsService.createNotification(request.requesterId, userId, 'FOLLOW_REQUEST_ACCEPTED');
+    } else {
+      await this.db.followRequest.update({ where: { id: requestId }, data: { status: 'DECLINED' } });
+    }
+
+    return { success: true, message: accept ? 'Request accepted.' : 'Request declined.' };
   }
 
   async unfollowUser(userId: string, targetId: string) {
@@ -678,16 +707,28 @@ export class AuthService {
     ]);
 
     let isFollowing = false;
+    let isRequested = false;
     if (viewerId && viewerId !== userId) {
-      const followRecord = await this.db.follow.findUnique({
-        where: {
-          followerId_followingId: {
-            followerId: viewerId,
-            followingId: userId,
+      const [followRecord, requestRecord] = await Promise.all([
+        this.db.follow.findUnique({
+          where: {
+            followerId_followingId: {
+              followerId: viewerId,
+              followingId: userId,
+            },
           },
-        },
-      });
+        }),
+        this.db.followRequest.findUnique({
+          where: {
+            requesterId_targetId: {
+              requesterId: viewerId,
+              targetId: userId,
+            },
+          },
+        }),
+      ]);
       isFollowing = !!followRecord;
+      isRequested = requestRecord?.status === 'PENDING';
     }
 
     return {
@@ -699,10 +740,12 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         bio: user.bio,
         isVerified: user.isVerified,
+        isPrivate: user.isPrivate,
         followersCount,
         followingCount,
         postsCount,
         isFollowing,
+        isRequested,
       },
     };
   }

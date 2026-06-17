@@ -38,6 +38,12 @@ export class PostsService {
     return this.formatPostResponse(post);
   }
 
+  async updatePost(id: string, userId: string, data: { caption?: string; location?: string }) {
+    const updated = await this.repo.updatePost(id, userId, data);
+    if (!updated) throw new ForbiddenException('Post not found or you are not the owner');
+    return this.formatPostResponse(updated);
+  }
+
   private shuffle<T>(array: T[]): T[] {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -64,17 +70,14 @@ export class PostsService {
     };
 
     if (!cursor) {
-      this.logger.debug(`Generating new randomized posts feed [${feedType}] for user: ${userKey}`);
       const allIds = await fetchIds();
       shuffledIds = this.shuffle(allIds);
-      await this.cache.set(idsCacheKey, shuffledIds, 600); // 10 minutes TTL
+      await this.cache.set(idsCacheKey, shuffledIds, 600);
     } else {
-      this.logger.debug(`Retrieving cached randomized posts feed [${feedType}] for user: ${userKey}, cursor: ${cursor}`);
       const cachedIds = await this.cache.get<string[]>(idsCacheKey);
       if (cachedIds && cachedIds.length > 0) {
         shuffledIds = cachedIds;
       } else {
-        this.logger.warn(`Randomized posts feed cache miss for user ${userKey} during paging. Regenerating feed.`);
         const allIds = await fetchIds();
         shuffledIds = this.shuffle(allIds);
         await this.cache.set(idsCacheKey, shuffledIds, 600);
@@ -83,40 +86,27 @@ export class PostsService {
 
     const startIndex = cursor ? parseInt(cursor, 10) : 0;
     if (isNaN(startIndex) || startIndex >= shuffledIds.length) {
-      return {
-        items: [],
-        nextCursor: null,
-        hasMore: false,
-      };
+      return { items: [], nextCursor: null, hasMore: false };
     }
 
     const endIndex = startIndex + limit;
     const pageIds = shuffledIds.slice(startIndex, endIndex);
     const posts = await this.repo.findFeedByIds(pageIds);
 
-    // Map database results to preserve the shuffled pageIds ordering
-    const postsMap = new Map(posts.map((p) => [p.id, p]));
-    const orderedPosts = pageIds.map((id) => postsMap.get(id)).filter(Boolean);
+    const postsMap = new Map(posts.map(p => [p.id, p]));
+    const orderedPosts = pageIds.map(id => postsMap.get(id)).filter(Boolean);
 
     const enrichedItems = await Promise.all(
       orderedPosts.map(async (post) => {
-        if (!post) throw new Error('Post not found in feed');
+        if (!post) return null;
         const isLiked = userId ? await this.repo.isLikedBy(post.id, userId) : false;
-        return {
-          ...this.formatPostResponse(post),
-          isLiked,
-        };
+        const isSaved = userId ? await this.repo.isSavedBy(post.id, userId) : false;
+        return { ...this.formatPostResponse(post), isLiked, isSaved };
       }),
     );
 
     const hasMore = endIndex < shuffledIds.length;
-    const nextCursor = hasMore ? endIndex.toString() : null;
-
-    return {
-      items: enrichedItems,
-      nextCursor,
-      hasMore,
-    };
+    return { items: enrichedItems.filter(Boolean), nextCursor: hasMore ? endIndex.toString() : null, hasMore };
   }
 
   async getPostById(id: string, userId?: string) {
@@ -124,10 +114,8 @@ export class PostsService {
     if (!post) throw new NotFoundException(`Post ${id} not found`);
 
     const isLiked = userId ? await this.repo.isLikedBy(id, userId) : false;
-    return {
-      ...this.formatPostResponse(post),
-      isLiked,
-    };
+    const isSaved = userId ? await this.repo.isSavedBy(id, userId) : false;
+    return { ...this.formatPostResponse(post), isLiked, isSaved };
   }
 
   async toggleLike(postId: string, userId: string) {
@@ -135,67 +123,71 @@ export class PostsService {
     if (!post) throw new NotFoundException(`Post ${postId} not found`);
 
     const result = await this.repo.toggleLike(postId, userId);
-
-    // Create like notification if post was liked (not unliked)
-    if (result.liked) {
-      await this.notificationsService.createNotification(
-        post.userId,
-        userId,
-        'LIKE_POST',
-        postId,
-      );
+    if (result.liked && post.userId !== userId) {
+      await this.notificationsService.createNotification(post.userId, userId, 'LIKE_POST', postId);
     }
-
     return result;
   }
 
-  async addComment(postId: string, userId: string, text: string) {
+  async toggleSave(postId: string, userId: string) {
+    const post = await this.repo.findById(postId);
+    if (!post) throw new NotFoundException(`Post ${postId} not found`);
+    return this.repo.toggleSave(postId, userId);
+  }
+
+  async getSavedPosts(userId: string, limit = 20, cursor?: string) {
+    const result = await this.repo.findSavedPosts(userId, limit, cursor);
+    const items = await Promise.all(
+      result.items.map(async (p) => {
+        const isLiked = await this.repo.isLikedBy(p.id, userId);
+        return { ...this.formatPostResponse(p), isLiked, isSaved: true };
+      }),
+    );
+    return { items, nextCursor: result.nextCursor, hasMore: result.hasMore };
+  }
+
+  // ── Comments ──────────────────────────────────────────────────────────────
+
+  async addComment(postId: string, userId: string, text: string, parentId?: string) {
     const post = await this.repo.findById(postId);
     if (!post) throw new NotFoundException(`Post ${postId} not found`);
 
-    const comment = await this.repo.addComment(postId, userId, text);
+    const comment = await this.repo.addComment(postId, userId, text, parentId);
 
-    // Create comment notification
-    await this.notificationsService.createNotification(
-      post.userId,
-      userId,
-      'COMMENT_POST',
-      postId,
-      undefined,
-      text,
-    );
+    if (!parentId && post.userId !== userId) {
+      await this.notificationsService.createNotification(post.userId, userId, 'COMMENT_POST', postId, undefined, text);
+    }
 
+    return this.formatCommentResponse(comment);
+  }
+
+  async getComments(postId: string, limit = 20, cursor?: string) {
+    const post = await this.repo.findById(postId);
+    if (!post) throw new NotFoundException(`Post ${postId} not found`);
+
+    const result = await this.repo.findComments(postId, limit, cursor);
     return {
-      id: comment.id,
-      text: comment.text,
-      createdAt: comment.createdAt,
-      user: {
-        id: comment.user.id,
-        username: comment.user.username,
-        displayName: comment.user.displayName,
-        avatarUrl: comment.user.avatarUrl,
-        isVerified: comment.user.isVerified,
-      },
+      data: result.items.map(c => this.formatCommentResponse(c)),
+      meta: { nextCursor: result.nextCursor, hasMore: result.hasMore },
     };
   }
 
-  async getComments(postId: string) {
-    const post = await this.repo.findById(postId);
-    if (!post) throw new NotFoundException(`Post ${postId} not found`);
+  async getReplies(commentId: string, limit = 10, cursor?: string) {
+    const result = await this.repo.findReplies(commentId, limit, cursor);
+    return {
+      data: result.items.map(r => this.formatCommentResponse(r)),
+      meta: { nextCursor: result.nextCursor, hasMore: result.hasMore },
+    };
+  }
 
-    const comments = await this.repo.findComments(postId);
-    return comments.map(c => ({
-      id: c.id,
-      text: c.text,
-      createdAt: c.createdAt,
-      user: {
-        id: c.user.id,
-        username: c.user.username,
-        displayName: c.user.displayName,
-        avatarUrl: c.user.avatarUrl,
-        isVerified: c.user.isVerified,
-      },
-    }));
+  async deleteComment(commentId: string, userId: string) {
+    const deleted = await this.repo.deleteComment(commentId, userId);
+    if (!deleted) throw new ForbiddenException('Comment not found or you are not the owner');
+    return { deleted };
+  }
+
+  async toggleCommentLike(commentId: string, userId: string) {
+    return this.repo.toggleCommentLike(commentId, userId);
   }
 
   async deletePost(id: string, userId: string) {
@@ -212,11 +204,9 @@ export class PostsService {
     return Promise.all(
       posts.map(async (p) => {
         const isLiked = userId ? await this.repo.isLikedBy(p.id, userId) : false;
-        return {
-          ...this.formatPostResponse(p),
-          isLiked,
-        };
-      })
+        const isSaved = userId ? await this.repo.isSavedBy(p.id, userId) : false;
+        return { ...this.formatPostResponse(p), isLiked, isSaved };
+      }),
     );
   }
 
@@ -225,19 +215,34 @@ export class PostsService {
     const items = await Promise.all(
       result.items.map(async (p) => {
         const isLiked = currentUserId ? await this.repo.isLikedBy(p.id, currentUserId) : false;
-        return {
-          ...this.formatPostResponse(p),
-          isLiked,
-        };
-      })
+        const isSaved = currentUserId ? await this.repo.isSavedBy(p.id, currentUserId) : false;
+        return { ...this.formatPostResponse(p), isLiked, isSaved };
+      }),
     );
 
     return {
       success: true,
-      data: {
-        posts: items,
-        nextCursor: result.nextCursor,
-        hasMore: result.hasMore,
+      data: { posts: items, nextCursor: result.nextCursor, hasMore: result.hasMore },
+    };
+  }
+
+  // ── Formatters ─────────────────────────────────────────────────────────────
+
+  private formatCommentResponse(c: any) {
+    return {
+      id: c.id,
+      text: c.text,
+      parentId: c.parentId ?? null,
+      likesCount: c.likesCount ?? 0,
+      repliesCount: c.repliesCount ?? 0,
+      isLiked: false,
+      createdAt: c.createdAt,
+      user: {
+        id: c.user.id,
+        username: c.user.username,
+        displayName: c.user.displayName,
+        avatarUrl: c.user.avatarUrl,
+        isVerified: c.user.isVerified,
       },
     };
   }

@@ -192,9 +192,18 @@ export class ChatService {
         return {
           id: conv.id,
           isGroup: conv.isGroup,
+          groupName: conv.groupName,
+          groupAvatar: conv.groupAvatar,
           createdAt: conv.createdAt,
           updatedAt: conv.updatedAt,
-          partner: partnerWithPresence,
+          partner: conv.isGroup ? null : partnerWithPresence,
+          participants: conv.participants.map(p => ({
+            id: p.user.id,
+            username: p.user.username,
+            displayName: p.user.displayName,
+            avatarUrl: p.user.avatarUrl,
+            isAdmin: p.isAdmin,
+          })),
           lastMessage: lastMessage ? lastMessage.text : '',
           lastMessageTime: lastMessage ? lastMessage.createdAt : conv.updatedAt,
           lastMessageSenderId: lastMessage ? lastMessage.senderId : null,
@@ -231,6 +240,20 @@ export class ChatService {
             avatarUrl: true,
           },
         },
+        story: {
+          select: {
+            id: true,
+            mediaUrl: true,
+            mediaType: true,
+            user: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+              }
+            }
+          }
+        }
       },
     });
 
@@ -240,8 +263,46 @@ export class ChatService {
       nextCursor = nextItem?.id;
     }
 
+    // Resolve post and reel references if any exist
+    const postIds = messages.filter(m => m.referenceType === 'post' && m.referenceId).map(m => m.referenceId as string);
+    const reelIds = messages.filter(m => m.referenceType === 'reel' && m.referenceId).map(m => m.referenceId as string);
+
+    const [posts, reels] = await Promise.all([
+      postIds.length > 0 ? this.db.post.findMany({
+        where: { id: { in: postIds } },
+        include: {
+          media: { select: { mediaUrl: true, mediaType: true }, take: 1 },
+          user: { select: { id: true, username: true, avatarUrl: true } }
+        }
+      }) : [],
+      reelIds.length > 0 ? this.db.reel.findMany({
+        where: { id: { in: reelIds } },
+        include: {
+          user: { select: { id: true, username: true, avatarUrl: true } }
+        }
+      }) : []
+    ]);
+
+    const postsMap = new Map<string, any>(posts.map(p => [p.id, p] as [string, any]));
+    const reelsMap = new Map<string, any>(reels.map(r => [r.id, r] as [string, any]));
+
+    const messagesWithReferences = messages.map(msg => {
+      let reference: any = null;
+      if (msg.referenceType === 'post' && msg.referenceId) {
+        reference = postsMap.get(msg.referenceId) || null;
+      } else if (msg.referenceType === 'reel' && msg.referenceId) {
+        reference = reelsMap.get(msg.referenceId) || null;
+      } else if (msg.referenceType === 'story' && msg.story) {
+        reference = msg.story;
+      }
+      return {
+        ...msg,
+        reference
+      };
+    });
+
     return {
-      messages, // Newer messages first (desc order)
+      messages: messagesWithReferences,
       nextCursor,
     };
   }
@@ -249,7 +310,15 @@ export class ChatService {
   /**
    * Saves a message to the database.
    */
-  async saveMessage(conversationId: string, senderId: string, text: string, mediaUrl?: string) {
+  async saveMessage(
+    conversationId: string,
+    senderId: string,
+    text: string,
+    mediaUrl?: string,
+    referenceType?: string,
+    referenceId?: string,
+    storyId?: string
+  ) {
     // Check if conversation exists
     const conv = await this.db.conversation.findUnique({
       where: { id: conversationId },
@@ -264,6 +333,9 @@ export class ChatService {
         senderId,
         text,
         mediaUrl,
+        referenceType,
+        referenceId,
+        storyId,
       },
       include: {
         sender: {
@@ -274,6 +346,20 @@ export class ChatService {
             avatarUrl: true,
           },
         },
+        story: {
+          select: {
+            id: true,
+            mediaUrl: true,
+            mediaType: true,
+            user: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+              }
+            }
+          }
+        }
       },
     });
 
@@ -283,7 +369,31 @@ export class ChatService {
       data: { updatedAt: new Date() },
     });
 
-    return message;
+    // Resolve reference
+    let reference: any = null;
+    if (message.referenceType === 'post' && message.referenceId) {
+      reference = await this.db.post.findUnique({
+        where: { id: message.referenceId },
+        include: {
+          media: { select: { mediaUrl: true, mediaType: true }, take: 1 },
+          user: { select: { id: true, username: true, avatarUrl: true } }
+        }
+      });
+    } else if (message.referenceType === 'reel' && message.referenceId) {
+      reference = await this.db.reel.findUnique({
+        where: { id: message.referenceId },
+        include: {
+          user: { select: { id: true, username: true, avatarUrl: true } }
+        }
+      });
+    } else if (message.referenceType === 'story' && message.story) {
+      reference = message.story;
+    }
+
+    return {
+      ...message,
+      reference,
+    };
   }
 
   /**
@@ -312,7 +422,7 @@ export class ChatService {
       throw new BadRequestException('Conversation not found.');
     }
 
-    const partner = conv.participants.find((p) => p.userId !== userId)?.user || null;
+    const partner = conv.isGroup ? null : (conv.participants.find((p) => p.userId !== userId)?.user || null);
     const partnerWithPresence = partner ? {
       ...partner,
       isOnline: this.presenceService.isOnline(partner.id),
@@ -321,9 +431,205 @@ export class ChatService {
     return {
       id: conv.id,
       isGroup: conv.isGroup,
+      groupName: conv.groupName,
+      groupAvatar: conv.groupAvatar,
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
       partner: partnerWithPresence,
+      participants: conv.participants.map(p => ({
+        id: p.user.id,
+        username: p.user.username,
+        displayName: p.user.displayName,
+        avatarUrl: p.user.avatarUrl,
+        isAdmin: p.isAdmin,
+      })),
     };
+  }
+
+  /**
+   * Creates a new group conversation with multiple participants.
+   */
+  async createGroupConversation(creatorId: string, name: string, participantIds: string[], groupAvatar?: string) {
+    if (!name || name.trim() === '') {
+      throw new BadRequestException('Group name is required.');
+    }
+    if (!participantIds || participantIds.length === 0) {
+      throw new BadRequestException('At least one participant is required.');
+    }
+
+    // Verify all participants exist
+    const users = await this.db.user.findMany({
+      where: {
+        id: { in: [...participantIds, creatorId] },
+      },
+    });
+
+    const userIds = users.map((u) => u.id);
+    const allParticipants = Array.from(new Set([...participantIds, creatorId]));
+
+    const missing = allParticipants.filter((id) => !userIds.includes(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Users not found: ${missing.join(', ')}`);
+    }
+
+    return this.db.conversation.create({
+      data: {
+        isGroup: true,
+        groupName: name,
+        groupAvatar: groupAvatar || null,
+        participants: {
+          create: allParticipants.map((id) => ({
+            userId: id,
+            isAdmin: id === creatorId,
+          })),
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Updates group metadata (name, avatar).
+   */
+  async updateGroupDetails(conversationId: string, userId: string, name?: string, groupAvatar?: string) {
+    const conv = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      include: { participants: true },
+    });
+    if (!conv) {
+      throw new BadRequestException('Group conversation not found.');
+    }
+    if (!conv.isGroup) {
+      throw new BadRequestException('This conversation is not a group.');
+    }
+
+    // Verify user is a participant
+    const isMember = conv.participants.some((p) => p.userId === userId);
+    if (!isMember) {
+      throw new BadRequestException('You are not a participant in this group.');
+    }
+
+    const data: any = {};
+    if (name !== undefined) data.groupName = name;
+    if (groupAvatar !== undefined) data.groupAvatar = groupAvatar;
+
+    return this.db.conversation.update({
+      where: { id: conversationId },
+      data,
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Adds participants to an existing group.
+   */
+  async addGroupParticipants(conversationId: string, userId: string, participantIds: string[]) {
+    const conv = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      include: { participants: true },
+    });
+    if (!conv) {
+      throw new BadRequestException('Group conversation not found.');
+    }
+    if (!conv.isGroup) {
+      throw new BadRequestException('This conversation is not a group.');
+    }
+
+    // Verify user is a participant
+    const isMember = conv.participants.some((p) => p.userId === userId);
+    if (!isMember) {
+      throw new BadRequestException('You are not a participant in this group.');
+    }
+
+    const existingIds = conv.participants.map((p) => p.userId);
+    const newIds = participantIds.filter((id) => !existingIds.includes(id));
+
+    if (newIds.length === 0) {
+      return this.getConversationById(conversationId, userId);
+    }
+
+    // Verify user IDs exist
+    const users = await this.db.user.findMany({
+      where: { id: { in: newIds } },
+    });
+    if (users.length !== newIds.length) {
+      throw new BadRequestException('Some users were not found.');
+    }
+
+    // Create participants
+    await this.db.conversationParticipant.createMany({
+      data: newIds.map((id) => ({
+        conversationId,
+        userId: id,
+        isAdmin: false,
+      })),
+    });
+
+    return this.getConversationById(conversationId, userId);
+  }
+
+  /**
+   * Removes a participant from a group.
+   */
+  async removeGroupParticipant(conversationId: string, userId: string, targetUserId: string) {
+    const conv = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      include: { participants: true },
+    });
+    if (!conv) {
+      throw new BadRequestException('Group conversation not found.');
+    }
+    if (!conv.isGroup) {
+      throw new BadRequestException('This conversation is not a group.');
+    }
+
+    const targetParticipant = conv.participants.find((p) => p.userId === targetUserId);
+    if (!targetParticipant) {
+      throw new BadRequestException('Target user is not a participant in this group.');
+    }
+
+    const isSelf = userId === targetUserId;
+    const isUserAdmin = conv.participants.find((p) => p.userId === userId)?.isAdmin || false;
+
+    if (!isSelf && !isUserAdmin) {
+      throw new BadRequestException('You must be a group admin to remove other participants.');
+    }
+
+    await this.db.conversationParticipant.delete({
+      where: {
+        conversationId_userId: {
+          conversationId,
+          userId: targetUserId,
+        },
+      },
+    });
+
+    return { success: true };
   }
 }

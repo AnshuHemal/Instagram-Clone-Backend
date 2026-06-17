@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -17,6 +18,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 
 import { PostsService } from './posts.service';
@@ -34,75 +36,99 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
+  // ── Upload Signature ──────────────────────────────────────────────────────
+
   @Post('upload-signature')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get a signed Cloudinary upload signature for posts',
-    description: 'Returns parameters for secure direct client uploads of post media.',
-  })
-  @ApiResponse({ status: 200, description: 'Signed upload parameters returned' })
+  @ApiOperation({ summary: 'Get a signed Cloudinary upload signature for posts' })
   getUploadSignature(
     @CurrentUser() user: JwtPayload,
     @Query('resourceType') resourceType?: 'video' | 'image',
   ) {
-    const signature = this.postsService.getUploadSignature(user.sub, resourceType || 'image');
     return {
       success: true,
       message: 'Upload signature generated',
-      data: signature,
+      data: this.postsService.getUploadSignature(user.sub, resourceType || 'image'),
       timestamp: new Date().toISOString(),
     };
   }
+
+  // ── Create Post ───────────────────────────────────────────────────────────
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Create a post',
-    description: 'Creates a post with media URLs uploaded directly to Cloudinary.',
-  })
-  @ApiResponse({ status: 201, description: 'Post created successfully' })
-  async createPost(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: CreatePostDto,
-  ) {
+  @ApiOperation({ summary: 'Create a post with media' })
+  async createPost(@CurrentUser() user: JwtPayload, @Body() dto: CreatePostDto) {
     const post = await this.postsService.createPost(user.sub, dto);
-    return {
-      success: true,
-      message: 'Post created',
-      data: post,
-      timestamp: new Date().toISOString(),
-    };
+    return { success: true, message: 'Post created', data: post, timestamp: new Date().toISOString() };
   }
+
+  // ── Get Post by ID ────────────────────────────────────────────────────────
+
+  @Get(':id')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get a single post by ID' })
+  @ApiParam({ name: 'id', description: 'Post UUID' })
+  async getPost(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const post = await this.postsService.getPostById(id, user?.sub);
+    return { success: true, data: post, timestamp: new Date().toISOString() };
+  }
+
+  // ── Update Post ───────────────────────────────────────────────────────────
+
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Edit caption/location of own post' })
+  @ApiParam({ name: 'id', description: 'Post UUID' })
+  async updatePost(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { caption?: string; location?: string },
+  ) {
+    const post = await this.postsService.updatePost(id, user.sub, body);
+    return { success: true, message: 'Post updated', data: post, timestamp: new Date().toISOString() };
+  }
+
+  // ── Feed ──────────────────────────────────────────────────────────────────
 
   @Get('feed')
   @SkipAuth()
-  @ApiOperation({
-    summary: 'Get timeline posts feed',
-    description: 'Returns a page of posts ordered by recency. Supports cursor-based pagination.',
-  })
-  @ApiResponse({ status: 200, description: 'Feed page returned' })
-  async getFeed(
-    @Query() query: FeedQueryDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  @ApiOperation({ summary: 'Get timeline posts feed (cursor-based pagination)' })
+  async getFeed(@Query() query: FeedQueryDto, @CurrentUser() user: JwtPayload) {
     const result = await this.postsService.getFeed(user?.sub, query);
     return {
       success: true,
       message: 'Feed loaded',
       data: result.items,
-      meta: {
-        nextCursor: result.nextCursor,
-        hasMore: result.hasMore,
-        limit: query.limit,
-      },
+      meta: { nextCursor: result.nextCursor, hasMore: result.hasMore, limit: query.limit },
       timestamp: new Date().toISOString(),
     };
   }
 
+  // ── Saved Posts ───────────────────────────────────────────────────────────
+
+  @Get('saved')
+  @ApiOperation({ summary: 'Get saved/bookmarked posts for current user' })
+  async getSavedPosts(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limitStr?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 20;
+    const result = await this.postsService.getSavedPosts(user.sub, limit, cursor);
+    return {
+      success: true,
+      data: result.items,
+      meta: { nextCursor: result.nextCursor, hasMore: result.hasMore },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ── User Posts ────────────────────────────────────────────────────────────
+
   @Get('user/:userId')
   @SkipAuth()
   @ApiOperation({ summary: 'Get posts created by a specific user' })
-  @ApiResponse({ status: 200, description: 'User posts returned' })
   async getUserPosts(
     @Param('userId', ParseUUIDPipe) targetUserId: string,
     @Query('limit') limitStr?: string,
@@ -113,88 +139,123 @@ export class PostsController {
     return this.postsService.getUserPosts(targetUserId, limit, cursor, user?.sub);
   }
 
+  // ── Search Posts ──────────────────────────────────────────────────────────
+
   @Get('search')
   @ApiOperation({ summary: 'Search posts by caption or location' })
-  @ApiResponse({ status: 200, description: 'Matched posts returned' })
-  async searchPosts(
-    @Query('q') query: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  async searchPosts(@Query('q') query: string, @CurrentUser() user: JwtPayload) {
     const posts = await this.postsService.searchPosts(query || '', user?.sub);
-    return {
-      success: true,
-      message: 'Posts searched',
-      data: posts,
-      timestamp: new Date().toISOString(),
-    };
+    return { success: true, data: posts, timestamp: new Date().toISOString() };
   }
+
+  // ── Like ──────────────────────────────────────────────────────────────────
 
   @Post(':id/like')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Toggle like status of a post' })
+  @ApiOperation({ summary: 'Toggle like on a post' })
   @ApiParam({ name: 'id', description: 'Post UUID' })
-  @ApiResponse({ status: 200, description: 'Like toggled' })
-  async toggleLike(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  async toggleLike(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const result = await this.postsService.toggleLike(id, user.sub);
-    return {
-      success: true,
-      message: result.liked ? 'Post liked' : 'Post unliked',
-      data: result,
-      timestamp: new Date().toISOString(),
-    };
+    return { success: true, message: result.liked ? 'Post liked' : 'Post unliked', data: result, timestamp: new Date().toISOString() };
   }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+
+  @Post(':id/save')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Toggle save/bookmark a post' })
+  @ApiParam({ name: 'id', description: 'Post UUID' })
+  async toggleSave(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const result = await this.postsService.toggleSave(id, user.sub);
+    return { success: true, message: result.saved ? 'Post saved' : 'Post unsaved', data: result, timestamp: new Date().toISOString() };
+  }
+
+  // ── Comments ──────────────────────────────────────────────────────────────
 
   @Post(':id/comment')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Add a comment to a post' })
+  @ApiOperation({ summary: 'Add a top-level comment to a post' })
   @ApiParam({ name: 'id', description: 'Post UUID' })
-  @ApiResponse({ status: 200, description: 'Comment added' })
   async addComment(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtPayload,
     @Body('text') text: string,
   ) {
     const comment = await this.postsService.addComment(id, user.sub, text);
-    return {
-      success: true,
-      message: 'Comment added',
-      data: comment,
-      timestamp: new Date().toISOString(),
-    };
+    return { success: true, message: 'Comment added', data: comment, timestamp: new Date().toISOString() };
   }
 
   @Get(':id/comments')
   @SkipAuth()
-  @ApiOperation({ summary: 'Get comments of a post' })
+  @ApiOperation({ summary: 'Get paginated top-level comments of a post' })
   @ApiParam({ name: 'id', description: 'Post UUID' })
-  @ApiResponse({ status: 200, description: 'Comments returned' })
-  async getComments(@Param('id', ParseUUIDPipe) id: string) {
-    const comments = await this.postsService.getComments(id);
-    return {
-      success: true,
-      message: 'Comments loaded',
-      data: comments,
-      timestamp: new Date().toISOString(),
-    };
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'cursor', required: false })
+  async getComments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limitStr?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 20;
+    const result = await this.postsService.getComments(id, limit, cursor);
+    return { success: true, ...result, timestamp: new Date().toISOString() };
   }
+
+  @Post(':id/comments/:commentId/reply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reply to a comment' })
+  async addReply(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body('text') text: string,
+  ) {
+    const comment = await this.postsService.addComment(id, user.sub, text, commentId);
+    return { success: true, message: 'Reply added', data: comment, timestamp: new Date().toISOString() };
+  }
+
+  @Get(':id/comments/:commentId/replies')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get replies to a comment' })
+  async getReplies(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Query('limit') limitStr?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 10;
+    const result = await this.postsService.getReplies(commentId, limit, cursor);
+    return { success: true, ...result, timestamp: new Date().toISOString() };
+  }
+
+  @Post(':id/comments/:commentId/like')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Toggle like on a comment' })
+  async toggleCommentLike(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.postsService.toggleCommentLike(commentId, user.sub);
+    return { success: true, data: result, timestamp: new Date().toISOString() };
+  }
+
+  @Delete(':id/comments/:commentId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete own comment' })
+  async deleteComment(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.postsService.deleteComment(commentId, user.sub);
+    return { success: true, message: 'Comment deleted', data: result, timestamp: new Date().toISOString() };
+  }
+
+  // ── Delete Post ───────────────────────────────────────────────────────────
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Soft-delete a post (owner only)' })
-  @ApiResponse({ status: 200, description: 'Post deleted' })
-  async deletePost(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  async deletePost(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const result = await this.postsService.deletePost(id, user.sub);
-    return {
-      success: true,
-      message: 'Post deleted',
-      data: result,
-      timestamp: new Date().toISOString(),
-    };
+    return { success: true, message: 'Post deleted', data: result, timestamp: new Date().toISOString() };
   }
 }

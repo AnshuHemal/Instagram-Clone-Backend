@@ -6,6 +6,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { DatabaseModule } from '../database/database.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { AdminController } from './admin.controller';
 import { MailModule } from '../mail/mail.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
@@ -26,7 +27,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     MailModule,
     NotificationsModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AdminController],
   providers: [JwtStrategy, AuthService],
   exports: [PassportModule, JwtModule, AuthService],
 })

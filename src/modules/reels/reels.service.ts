@@ -146,19 +146,50 @@ export class ReelsService {
     result: PaginatedResult<any>,
     userId?: string,
   ): Promise<PaginatedResult<any>> {
-    if (!userId) {
-      const items = result.items.map((reel) => ({ ...reel, isLiked: false }));
-      return { ...result, items };
-    }
-
     const enrichedItems = await Promise.all(
       result.items.map(async (reel) => {
-        let isLiked = await this.cache.getUserLiked(userId, reel.id);
-        if (isLiked === null) {
-          isLiked = await this.repo.isLikedBy(reel.id, userId);
-          await this.cache.setUserLiked(userId, reel.id, isLiked);
+        let isLiked = false;
+        if (userId) {
+          const cachedLiked = await this.cache.getUserLiked(userId, reel.id);
+          if (cachedLiked !== null) {
+            isLiked = cachedLiked;
+          } else {
+            isLiked = await this.repo.isLikedBy(reel.id, userId);
+            await this.cache.setUserLiked(userId, reel.id, isLiked);
+          }
         }
-        return { ...reel, isLiked };
+
+        let isFollowing = false;
+        let isRequested = false;
+        if (userId && userId !== reel.userId) {
+          const [followRecord, requestRecord] = await Promise.all([
+            this.repo.db.follow.findUnique({
+              where: {
+                followerId_followingId: {
+                  followerId: userId,
+                  followingId: reel.userId,
+                },
+              },
+            }),
+            this.repo.db.followRequest.findUnique({
+              where: {
+                requesterId_targetId: {
+                  requesterId: userId,
+                  targetId: reel.userId,
+                },
+              },
+            }),
+          ]);
+          isFollowing = !!followRecord;
+          isRequested = requestRecord?.status === 'PENDING';
+        }
+
+        return { 
+          ...reel, 
+          isLiked,
+          isFollowing,
+          isRequested,
+        };
       }),
     );
     return { ...result, items: enrichedItems };
@@ -270,6 +301,35 @@ export class ReelsService {
     }
 
     return { deleted };
+  }
+
+  async updateReel(reelId: string, userId: string, data: { caption?: string; audioName?: string }) {
+    const reel = await this.repo.findById(reelId);
+    if (!reel) throw new NotFoundException(`Reel ${reelId} not found`);
+    if (reel.userId !== userId) throw new ForbiddenException('Not your reel');
+
+    const updated = await this.repo.db.reel.update({
+      where: { id: reelId },
+      data: {
+        caption: data.caption,
+        audioName: data.audioName,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+            isVerified: true,
+          },
+        },
+      },
+    });
+
+    await this.cache.invalidateReel(reelId);
+
+    return this.formatReelResponse(updated);
   }
 
   // ── Webhook Processing ────────────────────────────────────────────────────
@@ -386,10 +446,37 @@ export class ReelsService {
     const items = await Promise.all(
       result.items.map(async (r) => {
         const isLiked = currentUserId ? await this.repo.isLikedBy(r.id, currentUserId) : false;
+
+        let isFollowing = false;
+        let isRequested = false;
+        if (currentUserId && currentUserId !== r.userId) {
+          const [followRecord, requestRecord] = await Promise.all([
+            this.repo.db.follow.findUnique({
+              where: {
+                followerId_followingId: {
+                  followerId: currentUserId,
+                  followingId: r.userId,
+                },
+              },
+            }),
+            this.repo.db.followRequest.findUnique({
+              where: {
+                requesterId_targetId: {
+                  requesterId: currentUserId,
+                  targetId: r.userId,
+                },
+              },
+            }),
+          ]);
+          isFollowing = !!followRecord;
+          isRequested = requestRecord?.status === 'PENDING';
+        }
+
         return {
           ...this.formatReelResponse(r),
-          user: r.user,
           isLiked,
+          isFollowing,
+          isRequested,
         };
       })
     );
@@ -439,6 +526,7 @@ export class ReelsService {
         displayName: reel.user.displayName,
         avatarUrl:   reel.user.avatarUrl,
         isVerified:  reel.user.isVerified,
+        isPrivate:   reel.user.isPrivate,
       } : undefined,
     };
   }

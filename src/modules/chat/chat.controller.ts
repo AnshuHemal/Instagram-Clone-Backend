@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -38,6 +40,56 @@ export class ChatController {
     @Body('partnerId') partnerId: string,
   ) {
     return this.chatService.getOrCreateConversation(user.sub, partnerId);
+  }
+
+  /**
+   * Create a new group conversation.
+   */
+  @Post('groups')
+  async createGroup(
+    @CurrentUser() user: JwtPayload,
+    @Body('name') name: string,
+    @Body('participantIds') participantIds: string[],
+    @Body('groupAvatar') groupAvatar?: string,
+  ) {
+    return this.chatService.createGroupConversation(user.sub, name, participantIds, groupAvatar);
+  }
+
+  /**
+   * Update group details (name/avatar).
+   */
+  @Patch('groups/:id')
+  async updateGroup(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body('name') name?: string,
+    @Body('groupAvatar') groupAvatar?: string,
+  ) {
+    return this.chatService.updateGroupDetails(id, user.sub, name, groupAvatar);
+  }
+
+  /**
+   * Add participants to an existing group conversation.
+   */
+  @Post('groups/:id/participants')
+  async addParticipants(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body('participantIds') participantIds: string[],
+  ) {
+    return this.chatService.addGroupParticipants(id, user.sub, participantIds);
+  }
+
+  /**
+   * Remove a participant from a group or leave the group.
+   */
+  @Delete('groups/:id/participants/:userId')
+  async removeParticipant(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.chatService.removeGroupParticipant(id, user.sub, userId);
   }
 
   /**

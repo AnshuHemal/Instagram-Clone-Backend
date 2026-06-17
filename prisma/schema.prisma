@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Prisma Schema — Instagram Reels Backend
+// Prisma Schema — Instagram Clone Backend
 // Database: Neon DB (serverless PostgreSQL)
 // ORM:      Prisma 5
 // ─────────────────────────────────────────────────────────────────────────────
@@ -11,7 +11,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  // directUrl = env("DIRECT_URL") // Optional: for prisma migrate (non-pooled)
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -22,40 +21,50 @@ enum ReelStatus {
   FAILED     // Transcoding failed
 }
 
+enum FollowRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 /// Represents a user account.
-/// Auth is handled externally (JWT); this table stores profile data only.
 model User {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  username     String    @unique @db.VarChar(30)
-  email        String    @unique
-  phone        String?   @unique @db.VarChar(20)
-  passwordHash String?   @db.VarChar(255)
-  birthday     DateTime?
-  displayName  String    @db.VarChar(50)
-  avatarUrl    String?
-  bio          String?   @db.VarChar(150)
-  gender       String?   @db.VarChar(30)
-  pronouns     String?   @db.VarChar(30)
-  links        Json?     @default("[]")
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username             String   @unique @db.VarChar(30)
+  email                String   @unique
+  phone                String?  @unique @db.VarChar(20)
+  passwordHash         String?  @db.VarChar(255)
+  birthday             DateTime?
+  displayName          String   @db.VarChar(50)
+  avatarUrl            String?
+  bio                  String?  @db.VarChar(150)
+  gender               String?  @db.VarChar(30)
+  pronouns             String?  @db.VarChar(30)
+  links                Json?    @default("[]")
   showPronounsToFollowers Boolean @default(false)
-  isVerified   Boolean   @default(false)
-  isOnboarded  Boolean   @default(false)
-  onboardingStep String  @default("PERMISSIONS") @db.VarChar(30)
-  pushToken    String?   @db.VarChar(200)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  isVerified           Boolean  @default(false)
+  isPrivate            Boolean  @default(false)
+  isOnboarded          Boolean  @default(false)
+  onboardingStep       String   @default("PERMISSIONS") @db.VarChar(30)
+  pushToken            String?  @db.VarChar(200)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  reels        Reel[]
-  likes        ReelLike[]
-  views        ReelView[]
-  followers    Follow[]   @relation("following")
-  following    Follow[]   @relation("follower")
-  posts        Post[]
-  postLikes    PostLike[]
-  postComments PostComment[]
-  reelComments ReelComment[]
+  reels                Reel[]
+  likes                ReelLike[]
+  views                ReelView[]
+  followers            Follow[]   @relation("following")
+  following            Follow[]   @relation("follower")
+  posts                Post[]
+  postLikes            PostLike[]
+  postComments         PostComment[]
+  reelComments         ReelComment[]
+  commentLikes         CommentLike[]
+  savedPosts           SavedPost[]
+  sentFollowRequests   FollowRequest[] @relation("FollowRequestSender")
+  receivedFollowRequests FollowRequest[] @relation("FollowRequestReceiver")
   notifications        Notification[] @relation("notificationRecipient")
   actorNotifications   Notification[] @relation("notificationActor")
   chatParticipants     ConversationParticipant[]
@@ -68,7 +77,6 @@ model User {
 }
 
 /// A Reel video post.
-/// The actual video is stored in Cloudinary. We store only metadata + CDN URLs.
 model Reel {
   id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId             String     @db.Uuid
@@ -76,43 +84,32 @@ model Reel {
   audioName          String?    @db.VarChar(100)
   hashtags           String[]   @default([])
 
-  // ── Cloudinary fields ──────────────────────────────────────────────────────
-  /// Cloudinary public_id — used to build CDN URLs and manage the asset.
   cloudinaryPublicId String?    @unique
-  /// Cloudinary master HLS playlist URL (the .m3u8 file)
   hlsUrl             String?
-  /// Cloudinary CDN URL to auto-generated thumbnail (JPEG)
   thumbnailUrl       String?
-  /// Video duration in seconds (set by Cloudinary webhook)
   durationSeconds    Float?
 
-  // ── Engagement counts ──────────────────────────────────────────────────────
-  /// Persisted to DB in 30-second batch flushes from Redis
   viewsCount         BigInt     @default(0)
   likesCount         BigInt     @default(0)
   commentsCount      Int        @default(0)
   sharesCount        Int        @default(0)
 
-  // ── State ──────────────────────────────────────────────────────────────────
   status             ReelStatus @default(PROCESSING)
   isDeleted          Boolean    @default(false)
 
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes    ReelLike[]
   views    ReelView[]
   comments ReelComment[]
 
-  // Optimized indexes for feed queries
-  @@index([status, createdAt(sort: Desc), id]) // Feed query
-  @@index([userId, createdAt(sort: Desc)])      // User profile reels
-  @@index([cloudinaryPublicId])                 // Webhook lookup
+  @@index([status, createdAt(sort: Desc), id])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([cloudinaryPublicId])
 }
 
-/// Tracks which users have liked which reels.
-/// Composite primary key prevents duplicate likes.
 model ReelLike {
   reelId    String   @db.Uuid
   userId    String   @db.Uuid
@@ -126,18 +123,13 @@ model ReelLike {
   @@index([userId])
 }
 
-/// Records each view event — foundation for the recommendation engine.
-/// watch_duration and completed flag allow ranking by engagement quality.
 model ReelView {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reelId          String   @db.Uuid
   userId          String   @db.Uuid
-  /// How many milliseconds the user actually watched
   watchDurationMs Int
-  /// Did the user watch the entire reel without scrolling away?
   completed       Boolean  @default(false)
-  /// Network quality at time of view (for adaptive streaming analytics)
-  quality         String?  @db.VarChar(10) // e.g. "1080p", "720p"
+  quality         String?  @db.VarChar(10)
   createdAt       DateTime @default(now())
 
   reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
@@ -147,20 +139,26 @@ model ReelView {
   @@index([userId, createdAt(sort: Desc)])
 }
 
-/// Comments on a reel.
+/// Comments on a reel — supports nested replies.
 model ReelComment {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reelId    String   @db.Uuid
-  userId    String   @db.Uuid
-  text      String   @db.VarChar(2200)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reelId     String   @db.Uuid
+  userId     String   @db.Uuid
+  text       String   @db.VarChar(2200)
+  parentId   String?  @db.Uuid
+  likesCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reel    Reel          @relation(fields: [reelId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  ReelComment?  @relation("ReelCommentReplies", fields: [parentId], references: [id])
+  replies ReelComment[] @relation("ReelCommentReplies")
+  likes   CommentLike[]
 
   @@index([reelId, createdAt(sort: Desc)])
   @@index([userId])
+  @@index([parentId])
 }
 
 /// Follow relationships between users.
@@ -177,9 +175,25 @@ model Follow {
   @@index([followingId])
 }
 
+/// Follow requests for private accounts.
+model FollowRequest {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requesterId String              @db.Uuid
+  targetId    String              @db.Uuid
+  status      FollowRequestStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  requester User @relation("FollowRequestSender", fields: [requesterId], references: [id], onDelete: Cascade)
+  target    User @relation("FollowRequestReceiver", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, targetId])
+  @@index([targetId, status])
+  @@index([requesterId, status])
+}
+
 // ─── Hashtag Models ───────────────────────────────────────────────────────────
 
-/// Tracks unique hashtags for explore/search.
 model Hashtag {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tag       String   @unique @db.VarChar(100)
@@ -193,11 +207,11 @@ model Hashtag {
 
 /// Polymorphic join table linking hashtags to posts, reels, or comments.
 model ContentHashtag {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hashtagId String   @db.Uuid
-  contentId String   @db.Uuid       // postId, reelId, or commentId
-  contentType String @db.VarChar(20) // "POST", "REEL", "COMMENT"
-  createdAt DateTime @default(now())
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hashtagId   String   @db.Uuid
+  contentId   String   @db.Uuid
+  contentType String   @db.VarChar(20)
+  createdAt   DateTime @default(now())
 
   hashtag Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
 
@@ -223,6 +237,7 @@ model Post {
   media         PostMedia[]
   likes         PostLike[]
   comments      PostComment[]
+  savedBy       SavedPost[]
 
   @@index([createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
@@ -232,7 +247,7 @@ model PostMedia {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   postId     String   @db.Uuid
   mediaUrl   String
-  mediaType  String   // "IMAGE" | "VIDEO"
+  mediaType  String
   orderIndex Int      @default(0)
 
   post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -253,24 +268,65 @@ model PostLike {
   @@index([userId])
 }
 
+/// Comments on a post — supports nested replies.
 model PostComment {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  postId    String   @db.Uuid
-  userId    String   @db.Uuid
-  text      String   @db.VarChar(2200)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId     String   @db.Uuid
+  userId     String   @db.Uuid
+  text       String   @db.VarChar(2200)
+  parentId   String?  @db.Uuid
+  likesCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  PostComment?  @relation("PostCommentReplies", fields: [parentId], references: [id])
+  replies PostComment[] @relation("PostCommentReplies")
+  likes   CommentLike[]
 
   @@index([postId, createdAt(sort: Desc)])
+  @@index([parentId])
+}
+
+/// Likes on individual comments (posts or reels).
+model CommentLike {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @db.Uuid
+  postCommentId String?  @db.Uuid
+  reelCommentId String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postComment PostComment? @relation(fields: [postCommentId], references: [id], onDelete: Cascade)
+  reelComment ReelComment? @relation(fields: [reelCommentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postCommentId])
+  @@unique([userId, reelCommentId])
+  @@index([postCommentId])
+  @@index([reelCommentId])
+}
+
+/// Saved/bookmarked posts by a user.
+model SavedPost {
+  id      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId  String   @db.Uuid
+  postId  String   @db.Uuid
+  savedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId, savedAt(sort: Desc)])
 }
 
 // ─── Notification Model ──────────────────────────────────────────────────────
 
 enum NotificationType {
   FOLLOW
+  FOLLOW_REQUEST
+  FOLLOW_REQUEST_ACCEPTED
   LIKE_POST
   LIKE_REEL
   COMMENT_POST
@@ -300,6 +356,8 @@ model Notification {
 model Conversation {
   id           String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   isGroup      Boolean                   @default(false)
+  groupName    String?                   @db.VarChar(100)
+  groupAvatar  String?
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt
   participants ConversationParticipant[]
@@ -310,6 +368,7 @@ model ConversationParticipant {
   conversationId String   @db.Uuid
   userId         String   @db.Uuid
   joinedAt       DateTime @default(now())
+  isAdmin        Boolean  @default(false)
 
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -321,13 +380,17 @@ model Message {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   conversationId String   @db.Uuid
   senderId       String   @db.Uuid
-  text           String   @db.VarChar(2200)
+  text           String?  @db.VarChar(2200)
   mediaUrl       String?
+  referenceType  String?  @db.VarChar(10)  // 'post' | 'reel' | 'story'
+  referenceId    String?  @db.Uuid
+  storyId        String?  @db.Uuid
   isRead         Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  story          Story?       @relation(fields: [storyId], references: [id], onDelete: SetNull)
 
   @@index([conversationId, createdAt(sort: Desc)])
 }
@@ -336,13 +399,14 @@ model Story {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
   mediaUrl  String
-  mediaType String   // "IMAGE" | "VIDEO"
+  mediaType String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   viewers   StoryViewer[]
   highlights HighlightStory[]
+  messages  Message[]
 
   @@index([expiresAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
@@ -361,7 +425,6 @@ model StoryViewer {
 
 // ─── Highlights Models ────────────────────────────────────────────────────────
 
-/// A permanent collection of stories curated by the user.
 model Highlight {
   id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String           @db.Uuid
@@ -376,17 +439,16 @@ model Highlight {
   @@index([userId, createdAt(sort: Desc)])
 }
 
-/// Join table linking highlights to individual story items.
 model HighlightStory {
   highlightId String    @db.Uuid
   storyId     String    @db.Uuid
+  orderIndex  Int       @default(0)
   createdAt   DateTime  @default(now())
 
   highlight   Highlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
   story       Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@id([highlightId, storyId])
-  @@index([highlightId])
+  @@index([highlightId, orderIndex])
   @@index([storyId])
 }
-
