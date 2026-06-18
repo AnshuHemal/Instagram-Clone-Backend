@@ -57,8 +57,34 @@ export class NotificationsService {
 
       const formatted = this.formatNotification(notification);
 
+      // Enrich with thumbnail for real-time payload
+      let postThumbnailUrl: string | null = null;
+      let reelThumbnailUrl: string | null = null;
+
+      if (postId) {
+        try {
+          const post = await this.db.post.findUnique({
+            where: { id: postId },
+            select: { media: { select: { mediaUrl: true }, orderBy: { orderIndex: 'asc' }, take: 1 } },
+          });
+          postThumbnailUrl = post?.media?.[0]?.mediaUrl ?? null;
+        } catch {}
+      }
+
+      if (reelId) {
+        try {
+          const reel = await this.db.reel.findUnique({
+            where: { id: reelId },
+            select: { thumbnailUrl: true },
+          });
+          reelThumbnailUrl = reel?.thumbnailUrl ?? null;
+        } catch {}
+      }
+
+      const enrichedFormatted = { ...formatted, postThumbnailUrl, reelThumbnailUrl };
+
       // Emit Socket.IO real-time event
-      this.eventEmitter.emit('notification.created', formatted);
+      this.eventEmitter.emit('notification.created', enrichedFormatted);
 
       // Fire Expo push notification asynchronously (best-effort, non-blocking)
       if (recipient?.pushToken) {
@@ -166,9 +192,39 @@ export class NotificationsService {
     const hasMore = notifications.length > limit;
     const data = hasMore ? notifications.slice(0, limit) : notifications;
 
+    const enriched = await Promise.all(
+      data.map(async (n) => {
+        const formatted = this.formatNotification(n);
+        let postThumbnailUrl: string | null = null;
+        let reelThumbnailUrl: string | null = null;
+
+        if (n.postId) {
+          try {
+            const post = await this.db.post.findUnique({
+              where: { id: n.postId },
+              select: { media: { select: { mediaUrl: true }, orderBy: { orderIndex: 'asc' }, take: 1 } },
+            });
+            postThumbnailUrl = post?.media?.[0]?.mediaUrl ?? null;
+          } catch {}
+        }
+
+        if (n.reelId) {
+          try {
+            const reel = await this.db.reel.findUnique({
+              where: { id: n.reelId },
+              select: { thumbnailUrl: true },
+            });
+            reelThumbnailUrl = reel?.thumbnailUrl ?? null;
+          } catch {}
+        }
+
+        return { ...formatted, postThumbnailUrl, reelThumbnailUrl };
+      })
+    );
+
     return {
       success: true,
-      notifications: data.map(n => this.formatNotification(n)),
+      notifications: enriched,
       nextCursor: hasMore ? data[data.length - 1].id : null,
     };
   }
