@@ -190,6 +190,13 @@ export class PostsService {
     return this.repo.toggleCommentLike(commentId, userId);
   }
 
+  async getPostLikes(postId: string, currentUserId: string, limit = 50) {
+    const post = await this.repo.findById(postId);
+    if (!post) throw new NotFoundException(`Post ${postId} not found`);
+    const data = await this.repo.findLikes(postId, currentUserId, limit);
+    return { success: true, data };
+  }
+
   async deletePost(id: string, userId: string) {
     const post = await this.repo.findById(id);
     if (!post) throw new NotFoundException(`Post ${id} not found`);

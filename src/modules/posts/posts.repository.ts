@@ -339,4 +339,34 @@ export class PostsRepository {
       take: 30,
     });
   }
+
+  async findLikes(postId: string, currentUserId: string, limit: number) {
+    const likes = await this.db.postLike.findMany({
+      where: { postId },
+      include: {
+        user: {
+          select: { id: true, username: true, displayName: true, avatarUrl: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    const followingRes = await this.db.follow.findMany({
+      where: {
+        followerId: currentUserId,
+        followingId: { in: likes.map(l => l.userId) },
+      },
+      select: { followingId: true },
+    });
+    const followingSet = new Set(followingRes.map(f => f.followingId));
+
+    return likes.map(l => ({
+      id: l.user.id,
+      username: l.user.username,
+      displayName: l.user.displayName,
+      avatarUrl: l.user.avatarUrl,
+      isFollowing: followingSet.has(l.user.id),
+    }));
+  }
 }

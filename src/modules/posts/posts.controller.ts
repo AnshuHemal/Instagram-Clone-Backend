@@ -172,6 +172,18 @@ export class PostsController {
 
   // ── Comments ──────────────────────────────────────────────────────────────
 
+  @Get(':id/likes')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get users who liked a post' })
+  async getPostLikes(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') postId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.postsService.getPostLikes(postId, user.sub, limit ? Number(limit) : 50);
+  }
+
   @Post(':id/comment')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Add a top-level comment to a post' })
