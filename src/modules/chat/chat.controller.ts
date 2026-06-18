@@ -135,4 +135,40 @@ export class ChatController {
       data: result,
     };
   }
+
+  /**
+   * Toggle an emoji reaction on a message.
+   * POST /chat/messages/:id/react  { emoji: string }
+   */
+  @Post('messages/:id/react')
+  async reactToMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') messageId: string,
+    @Body('emoji') emoji: string,
+  ) {
+    if (!emoji) {
+      throw new BadRequestException('emoji is required');
+    }
+    const result = await this.chatService.reactToMessage(messageId, user.sub, emoji);
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  /**
+   * Delete (soft-delete) a message.
+   * DELETE /chat/messages/:id
+   */
+  @Delete('messages/:id')
+  async deleteMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') messageId: string,
+  ) {
+    const result = await this.chatService.deleteMessage(messageId, user.sub);
+    return {
+      success: true,
+      data: result,
+    };
+  }
 }

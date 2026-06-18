@@ -72,6 +72,11 @@ model User {
   stories              Story[]
   viewedStories        StoryViewer[]
   highlights           Highlight[]
+  blockedUsers         Block[]  @relation("BlockerUser")
+  blockedByUsers       Block[]  @relation("BlockedUser")
+  mutedUsers           Mute[]   @relation("MuterUser")
+  mutedByUsers         Mute[]   @relation("MutedByUser")
+  messageReactions     MessageReaction[]
 
   @@index([username])
 }
@@ -386,13 +391,32 @@ model Message {
   referenceId    String?  @db.Uuid
   storyId        String?  @db.Uuid
   isRead         Boolean  @default(false)
+  // NOTE: Run prisma migrate after adding replyToId field
+  replyToId      String?  @db.Uuid
   createdAt      DateTime @default(now())
 
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
   story          Story?       @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  reactions      MessageReaction[]
 
   @@index([conversationId, createdAt(sort: Desc)])
+}
+
+/// Emoji reactions on chat messages.
+// NOTE: Run prisma migrate after adding MessageReaction model
+model MessageReaction {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  emoji     String   @db.VarChar(10)
+  createdAt DateTime @default(now())
+
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
 }
 
 model Story {
@@ -451,4 +475,37 @@ model HighlightStory {
   @@id([highlightId, storyId])
   @@index([highlightId, orderIndex])
   @@index([storyId])
+}
+
+// NOTE: After adding these models, run `npx prisma migrate dev` in the backend directory to apply changes to the database.
+
+/// Block relationship between users.
+model Block {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  blockerId   String   @db.Uuid
+  blockedId   String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  blocker     User @relation("BlockerUser", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked     User @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+/// Mute relationship — user mutes another's posts/stories.
+model Mute {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  muterId   String   @db.Uuid
+  mutedId   String   @db.Uuid
+  mutePosts  Boolean  @default(true)
+  muteStories Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  muter     User @relation("MuterUser", fields: [muterId], references: [id], onDelete: Cascade)
+  muted     User @relation("MutedByUser", fields: [mutedId], references: [id], onDelete: Cascade)
+
+  @@unique([muterId, mutedId])
+  @@index([muterId])
 }

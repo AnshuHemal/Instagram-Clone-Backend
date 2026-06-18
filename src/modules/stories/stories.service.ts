@@ -204,6 +204,59 @@ export class StoriesService {
   }
 
   /**
+   * Get the list of users who viewed a specific story.
+   * Only the story owner can see viewers.
+   */
+  async getStoryViewers(userId: string, storyId: string) {
+    const story = await this.db.story.findUnique({
+      where: { id: storyId },
+      select: { userId: true },
+    });
+    if (!story || story.userId !== userId) {
+      throw new BadRequestException('Story not found or access denied.');
+    }
+    const viewers = await this.db.storyViewer.findMany({
+      where: { storyId },
+      include: {
+        viewer: {
+          select: { id: true, username: true, displayName: true, avatarUrl: true },
+        },
+      },
+      orderBy: { viewedAt: 'desc' },
+    });
+    return {
+      success: true,
+      data: viewers.map(v => ({
+        ...v.viewer,
+        viewedAt: v.viewedAt,
+      })),
+      count: viewers.length,
+    };
+  }
+
+  /**
+   * Delete a story (only the owner can delete their own story).
+   */
+  async deleteStory(userId: string, storyId: string) {
+    const story = await this.db.story.findUnique({
+      where: { id: storyId },
+      select: { userId: true, mediaUrl: true },
+    });
+    if (!story || story.userId !== userId) {
+      throw new BadRequestException('Story not found or access denied.');
+    }
+    // Delete from Cloudinary
+    const parsed = this.getCloudinaryPublicId(story.mediaUrl);
+    if (parsed) {
+      try {
+        await cloudinary.uploader.destroy(parsed.publicId, { resource_type: parsed.resourceType as any });
+      } catch (_) {}
+    }
+    await this.db.story.delete({ where: { id: storyId } });
+    return { success: true, message: 'Story deleted.' };
+  }
+
+  /**
    * Fetch all of a user's own stories (active + expired) for the archive/highlight picker.
    * Returns stories in reverse chronological order (newest first).
    */

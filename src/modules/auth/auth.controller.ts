@@ -219,6 +219,65 @@ export class AuthController {
     return this.authService.unfollowUser(user.sub, targetId);
   }
 
+  @Post('users/:id/block')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Block a user' })
+  async blockUser(@CurrentUser() user: JwtPayload, @Param('id') targetId: string) {
+    return this.authService.blockUser(user.sub, targetId);
+  }
+
+  @Delete('users/:id/block')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unblock a user' })
+  async unblockUser(@CurrentUser() user: JwtPayload, @Param('id') targetId: string) {
+    return this.authService.unblockUser(user.sub, targetId);
+  }
+
+  @Get('users/blocked')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get list of blocked users' })
+  async getBlockedUsers(@CurrentUser() user: JwtPayload) {
+    return this.authService.getBlockedUsers(user.sub);
+  }
+
+  @Post('users/:id/mute')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mute a user' })
+  async muteUser(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') targetId: string,
+    @Body('mutePosts') mutePosts: boolean,
+    @Body('muteStories') muteStories: boolean,
+  ) {
+    return this.authService.muteUser(user.sub, targetId, mutePosts ?? true, muteStories ?? false);
+  }
+
+  @Delete('users/:id/mute')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unmute a user' })
+  async unmuteUser(@CurrentUser() user: JwtPayload, @Param('id') targetId: string) {
+    return this.authService.unmuteUser(user.sub, targetId);
+  }
+
+  @Get('users/:id/mutual-followers')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get mutual followers between viewer and target user' })
+  async getMutualFollowers(@CurrentUser() user: JwtPayload, @Param('id') targetId: string) {
+    return this.authService.getMutualFollowers(user.sub, targetId);
+  }
+
   @Get('users/:id/follow-status')
   @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)

@@ -632,4 +632,57 @@ export class ChatService {
 
     return { success: true };
   }
+
+  /**
+   * Toggle an emoji reaction on a message. If the user already reacted with the same
+   * emoji, the reaction is removed (toggle). Otherwise it is upserted.
+   */
+  async reactToMessage(messageId: string, userId: string, emoji: string) {
+    // Check if the user already reacted with this emoji on this message
+    const existing = await this.db.messageReaction.findUnique({
+      where: { messageId_userId: { messageId, userId } },
+    });
+
+    if (existing && existing.emoji === emoji) {
+      // Same emoji → remove (toggle off)
+      await this.db.messageReaction.delete({
+        where: { messageId_userId: { messageId, userId } },
+      });
+      return { toggled: 'removed', emoji };
+    }
+
+    // Upsert (create or update to new emoji)
+    const reaction = await this.db.messageReaction.upsert({
+      where: { messageId_userId: { messageId, userId } },
+      create: { messageId, userId, emoji },
+      update: { emoji },
+    });
+
+    return { toggled: 'added', emoji, reaction };
+  }
+
+  /**
+   * Soft-delete a message by marking it as deleted (sets text to null, clears mediaUrl).
+   * Only the sender can delete their own message.
+   */
+  async deleteMessage(messageId: string, userId: string) {
+    const message = await this.db.message.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new BadRequestException('Message not found.');
+    }
+
+    if (message.senderId !== userId) {
+      throw new BadRequestException('You can only delete your own messages.');
+    }
+
+    await this.db.message.update({
+      where: { id: messageId },
+      data: { text: null, mediaUrl: null },
+    });
+
+    return { success: true, messageId };
+  }
 }

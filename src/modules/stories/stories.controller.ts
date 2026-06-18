@@ -54,6 +54,26 @@ export class StoriesController {
     return this.storiesService.viewStory(user.sub, storyId);
   }
 
+  @Get(':id/viewers')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get viewers of a story (only available to story owner)' })
+  async getStoryViewers(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') storyId: string,
+  ) {
+    return this.storiesService.getStoryViewers(user.sub, storyId);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a story' })
+  async deleteStory(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') storyId: string,
+  ) {
+    return this.storiesService.deleteStory(user.sub, storyId);
+  }
+
   @Get('archive')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get all stories ever created by current user (archive)' })

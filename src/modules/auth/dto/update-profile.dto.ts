@@ -61,6 +61,11 @@ export class UpdateProfileDto {
   @IsDateString()
   birthday?: string;
 
+  @ApiProperty({ example: false, description: 'Whether the account is private', required: false })
+  @IsOptional()
+  @IsBoolean()
+  isPrivate?: boolean;
+
   @ApiProperty({ example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', description: 'Expo device push token for push notifications', required: false })
   @IsOptional()
   @IsString()

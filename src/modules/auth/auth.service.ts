@@ -360,6 +360,7 @@ export class AuthService {
         ...(dto.links !== undefined && { links: dto.links }),
         ...(dto.showPronounsToFollowers !== undefined && { showPronounsToFollowers: dto.showPronounsToFollowers }),
         ...(dto.birthday !== undefined && { birthday: new Date(dto.birthday) }),
+        ...(dto.isPrivate !== undefined && { isPrivate: dto.isPrivate }),
       },
     });
 
@@ -390,6 +391,7 @@ export class AuthService {
         postsCount,
         phone: user.phone,
         birthday: user.birthday,
+        isPrivate: user.isPrivate,
       },
     };
   }
@@ -567,6 +569,7 @@ export class AuthService {
         postsCount,
         phone: user.phone,
         birthday: user.birthday,
+        isPrivate: user.isPrivate,
       },
     };
   }
@@ -708,27 +711,27 @@ export class AuthService {
 
     let isFollowing = false;
     let isRequested = false;
+    let isBlocked = false;
+    let isMuted = false;
     if (viewerId && viewerId !== userId) {
-      const [followRecord, requestRecord] = await Promise.all([
+      const [followRecord, requestRecord, blockRecord, muteRecord] = await Promise.all([
         this.db.follow.findUnique({
-          where: {
-            followerId_followingId: {
-              followerId: viewerId,
-              followingId: userId,
-            },
-          },
+          where: { followerId_followingId: { followerId: viewerId, followingId: userId } },
         }),
         this.db.followRequest.findUnique({
-          where: {
-            requesterId_targetId: {
-              requesterId: viewerId,
-              targetId: userId,
-            },
-          },
+          where: { requesterId_targetId: { requesterId: viewerId, targetId: userId } },
         }),
+        this.db.block.findUnique({
+          where: { blockerId_blockedId: { blockerId: viewerId, blockedId: userId } },
+        }).catch(() => null),
+        this.db.mute.findUnique({
+          where: { muterId_mutedId: { muterId: viewerId, mutedId: userId } },
+        }).catch(() => null),
       ]);
       isFollowing = !!followRecord;
       isRequested = requestRecord?.status === 'PENDING';
+      isBlocked = !!blockRecord;
+      isMuted = !!muteRecord;
     }
 
     return {
@@ -746,6 +749,8 @@ export class AuthService {
         postsCount,
         isFollowing,
         isRequested,
+        isBlocked,
+        isMuted,
       },
     };
   }
@@ -841,5 +846,72 @@ export class AuthService {
     });
 
     return { success: true };
+  }
+
+  async blockUser(userId: string, targetId: string) {
+    if (userId === targetId) throw new BadRequestException('You cannot block yourself.');
+    // Remove existing follow/request relationships both ways
+    await this.db.follow.deleteMany({
+      where: { OR: [{ followerId: userId, followingId: targetId }, { followerId: targetId, followingId: userId }] },
+    });
+    await this.db.followRequest.deleteMany({
+      where: { OR: [{ requesterId: userId, targetId }, { requesterId: targetId, targetId: userId }] },
+    });
+    await this.db.block.upsert({
+      where: { blockerId_blockedId: { blockerId: userId, blockedId: targetId } },
+      update: {},
+      create: { blockerId: userId, blockedId: targetId },
+    });
+    return { success: true, blocked: true };
+  }
+
+  async unblockUser(userId: string, targetId: string) {
+    await this.db.block.deleteMany({ where: { blockerId: userId, blockedId: targetId } });
+    return { success: true, blocked: false };
+  }
+
+  async getBlockedUsers(userId: string) {
+    const blocks = await this.db.block.findMany({
+      where: { blockerId: userId },
+      include: {
+        blocked: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { success: true, data: blocks.map((b: any) => b.blocked) };
+  }
+
+  async muteUser(userId: string, targetId: string, mutePosts: boolean, muteStories: boolean) {
+    if (userId === targetId) throw new BadRequestException('You cannot mute yourself.');
+    await this.db.mute.upsert({
+      where: { muterId_mutedId: { muterId: userId, mutedId: targetId } },
+      update: { mutePosts, muteStories },
+      create: { muterId: userId, mutedId: targetId, mutePosts, muteStories },
+    });
+    return { success: true, muted: true };
+  }
+
+  async unmuteUser(userId: string, targetId: string) {
+    await this.db.mute.deleteMany({ where: { muterId: userId, mutedId: targetId } });
+    return { success: true, muted: false };
+  }
+
+  async getMutualFollowers(userId: string, targetId: string) {
+    const myFollowing = await this.db.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+    const myFollowingIds = myFollowing.map((f: any) => f.followingId);
+    const targetFollowers = await this.db.follow.findMany({
+      where: { followingId: targetId, followerId: { in: myFollowingIds } },
+      include: {
+        follower: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+      },
+      take: 3,
+    });
+    const total = await this.db.follow.count({
+      where: { followingId: targetId, followerId: { in: myFollowingIds } },
+    });
+    return { success: true, data: targetFollowers.map((f: any) => f.follower), total };
   }
 }
