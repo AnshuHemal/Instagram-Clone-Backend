@@ -93,14 +93,33 @@ export class StoriesService {
 
   /**
    * Fetch active stories grouped by User.
+   *
+   * Visibility rules (mirrors Instagram):
+   *   - A user always sees their own stories.
+   *   - A user sees another person's stories only when a confirmed Follow row
+   *     exists (followerId = current user, followingId = story owner).
+   *     • If User B accepts User A's follow request → A sees B's stories.
+   *     • Only after B also follows A back will B see A's stories.
+   *
    * Marks seen/unseen state based on current user's StoryViewer entries.
    */
   async getStories(userId: string) {
     const now = new Date();
 
+    // Fetch the IDs of every user the current user is following (accepted Follow).
+    const followingRows = await this.db.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+    const followingIds = followingRows.map((f) => f.followingId);
+
+    // Include own stories + stories from followed users only.
+    const visibleUserIds = [userId, ...followingIds];
+
     const activeStories = await this.db.story.findMany({
       where: {
         expiresAt: { gt: now },
+        userId: { in: visibleUserIds },
       },
       include: {
         user: {
@@ -151,6 +170,7 @@ export class StoriesService {
 
     const groups = Array.from(userGroupsMap.values());
 
+    // Sort: own stories first → unseen → seen
     return groups.sort((a, b) => {
       if (a.userId === userId) return -1;
       if (b.userId === userId) return 1;
