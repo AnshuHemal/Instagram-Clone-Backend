@@ -63,32 +63,6 @@ export class PostsController {
     return { success: true, message: 'Post created', data: post, timestamp: new Date().toISOString() };
   }
 
-  // ── Get Post by ID ────────────────────────────────────────────────────────
-
-  @Get(':id')
-  @SkipAuth()
-  @ApiOperation({ summary: 'Get a single post by ID' })
-  @ApiParam({ name: 'id', description: 'Post UUID' })
-  async getPost(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
-    const post = await this.postsService.getPostById(id, user?.sub);
-    return { success: true, data: post, timestamp: new Date().toISOString() };
-  }
-
-  // ── Update Post ───────────────────────────────────────────────────────────
-
-  @Patch(':id')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Edit caption/location of own post' })
-  @ApiParam({ name: 'id', description: 'Post UUID' })
-  async updatePost(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-    @Body() body: { caption?: string; location?: string },
-  ) {
-    const post = await this.postsService.updatePost(id, user.sub, body);
-    return { success: true, message: 'Post updated', data: post, timestamp: new Date().toISOString() };
-  }
-
   // ── Feed ──────────────────────────────────────────────────────────────────
 
   @Get('feed')
@@ -146,6 +120,32 @@ export class PostsController {
   async searchPosts(@Query('q') query: string, @CurrentUser() user: JwtPayload) {
     const posts = await this.postsService.searchPosts(query || '', user?.sub);
     return { success: true, data: posts, timestamp: new Date().toISOString() };
+  }
+
+  // ── Get Post by ID ────────────────────────────────────────────────────────
+
+  @Get(':id')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get a single post by ID' })
+  @ApiParam({ name: 'id', description: 'Post UUID' })
+  async getPost(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const post = await this.postsService.getPostById(id, user?.sub);
+    return { success: true, data: post, timestamp: new Date().toISOString() };
+  }
+
+  // ── Update Post ───────────────────────────────────────────────────────────
+
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Edit caption/location of own post' })
+  @ApiParam({ name: 'id', description: 'Post UUID' })
+  async updatePost(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { caption?: string; location?: string },
+  ) {
+    const post = await this.postsService.updatePost(id, user.sub, body);
+    return { success: true, message: 'Post updated', data: post, timestamp: new Date().toISOString() };
   }
 
   // ── Like ──────────────────────────────────────────────────────────────────
