@@ -28,8 +28,6 @@ export class DatabaseService
               { emit: 'stdout', level: 'warn' },
             ]
           : [{ emit: 'stdout', level: 'error' }],
-      // Connection pool configuration optimized for Neon's serverless pooler
-      datasourceUrl: process.env.DATABASE_URL,
     });
 
     // Log all queries in development for debugging
