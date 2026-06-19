@@ -175,6 +175,14 @@ export class ReelsController {
     );
   }
 
+  @Get('trending-sounds')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get trending audio names from recent reels' })
+  async getTrendingSounds(@Query('limit') limit?: string) {
+    return this.reelsService.getTrendingSounds(Number(limit ?? 8));
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // GET /api/reels/:id
   // ──────────────────────────────────────────────────────────────────────────

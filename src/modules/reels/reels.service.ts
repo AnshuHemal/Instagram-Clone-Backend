@@ -15,6 +15,7 @@ import { FeedQueryDto } from './dto/feed-query.dto';
 import { RecordViewDto } from './dto/record-view.dto';
 import { PaginatedResult } from '../../common/types/api-response.type';
 import { NotificationsService } from '../notifications/notifications.service';
+import { sanitizeAndTruncate } from '../../common/utils/sanitize';
 
 /**
  * ReelsService — orchestrates business logic for the Reels feature.
@@ -58,6 +59,7 @@ export class ReelsService {
    * (see WebhooksService).
    */
   async createReel(userId: string, dto: CreateReelDto) {
+    if (dto.caption !== undefined) dto.caption = sanitizeAndTruncate(dto.caption, 2200);
     const reel = await this.repo.create({
       userId,
       cloudinaryPublicId: dto.cloudinaryPublicId,
@@ -538,5 +540,28 @@ export class ReelsService {
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+  }
+
+  async getTrendingSounds(limit = 8) {
+    const results = await this.repo.db.reel.groupBy({
+      by: ['audioName'],
+      where: {
+        audioName: { not: null },
+        status: 'READY',
+      },
+      _count: { audioName: true },
+      orderBy: { _count: { audioName: 'desc' } },
+      take: limit,
+    });
+
+    return {
+      success: true,
+      data: results
+        .filter((r: any) => r.audioName && r.audioName !== 'Original Audio')
+        .map((r: any) => ({
+          audioName: r.audioName,
+          reelCount: r._count.audioName,
+        })),
+    };
   }
 }

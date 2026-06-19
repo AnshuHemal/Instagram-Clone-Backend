@@ -6,6 +6,7 @@ import { FeedQueryDto, FeedType } from './dto/feed-query.dto';
 import { PaginatedResult } from '../../common/types/api-response.type';
 import { CacheService } from '../cache/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { sanitizeAndTruncate } from '../../common/utils/sanitize';
 
 @Injectable()
 export class PostsService {
@@ -23,6 +24,8 @@ export class PostsService {
   }
 
   async createPost(userId: string, dto: CreatePostDto) {
+    if (dto.caption) dto.caption = sanitizeAndTruncate(dto.caption, 2200);
+    if (dto.location) dto.location = sanitizeAndTruncate(dto.location, 255);
     const post = await this.repo.create({
       userId,
       caption: dto.caption,
@@ -152,7 +155,8 @@ export class PostsService {
     const post = await this.repo.findById(postId);
     if (!post) throw new NotFoundException(`Post ${postId} not found`);
 
-    const comment = await this.repo.addComment(postId, userId, text, parentId);
+    const safeText = sanitizeAndTruncate(text, 2200);
+    const comment = await this.repo.addComment(postId, userId, safeText, parentId);
 
     if (!parentId && post.userId !== userId) {
       await this.notificationsService.createNotification(post.userId, userId, 'COMMENT_POST', postId, undefined, text);

@@ -32,6 +32,18 @@ export class ChatService {
    * Uploads file buffer to Cloudinary (image or video) for chat media.
    */
   async uploadChatMedia(userId: string, file: any) {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('No file provided.');
+    }
+    const isVideo = file.mimetype?.startsWith('video/');
+    const maxSizeBytes = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      throw new BadRequestException(
+        isVideo
+          ? 'Video file too large. Maximum allowed size is 50 MB.'
+          : 'Image file too large. Maximum allowed size is 10 MB.',
+      );
+    }
     try {
       const uploadResult = await new Promise<any>((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(

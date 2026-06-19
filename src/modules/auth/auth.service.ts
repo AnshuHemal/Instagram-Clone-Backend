@@ -13,6 +13,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { v2 as cloudinary } from 'cloudinary';
+import { sanitizeAndTruncate } from '../../common/utils/sanitize';
 
 interface SignupSession {
   emailOrPhone: string;
@@ -346,6 +347,8 @@ export class AuthService {
       }
     }
 
+    if (dto.name !== undefined) dto.name = sanitizeAndTruncate(dto.name, 60);
+    if (dto.bio !== undefined) dto.bio = sanitizeAndTruncate(dto.bio, 150);
     const user = await this.db.user.update({
       where: { id: userId },
       data: {
