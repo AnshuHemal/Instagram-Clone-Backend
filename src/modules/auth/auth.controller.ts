@@ -329,4 +329,25 @@ export class AuthController {
   ) {
     return this.authService.registerPushToken(user.sub, pushToken);
   }
+
+  @Get('notification-preferences')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get notification preferences' })
+  async getNotificationPreferences(@CurrentUser() user: JwtPayload) {
+    return this.authService.getNotificationPreferences(user.sub);
+  }
+
+  @Patch('notification-preferences')
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update notification preferences' })
+  async updateNotificationPreferences(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: Record<string, boolean>,
+  ) {
+    return this.authService.updateNotificationPreferences(user.sub, body);
+  }
 }

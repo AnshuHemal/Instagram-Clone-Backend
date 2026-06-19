@@ -10,7 +10,6 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -49,6 +48,7 @@ model User {
   isOnboarded          Boolean  @default(false)
   onboardingStep       String   @default("PERMISSIONS") @db.VarChar(30)
   pushToken            String?  @db.VarChar(200)
+  notificationPreferences Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

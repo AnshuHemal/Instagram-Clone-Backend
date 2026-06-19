@@ -721,12 +721,12 @@ export class AuthService {
         this.db.followRequest.findUnique({
           where: { requesterId_targetId: { requesterId: viewerId, targetId: userId } },
         }),
-        this.db.block.findUnique({
+        (this.db as any).block?.findUnique({
           where: { blockerId_blockedId: { blockerId: viewerId, blockedId: userId } },
-        }).catch(() => null),
-        this.db.mute.findUnique({
+        })?.catch(() => null) ?? Promise.resolve(null),
+        (this.db as any).mute?.findUnique({
           where: { muterId_mutedId: { muterId: viewerId, mutedId: userId } },
-        }).catch(() => null),
+        })?.catch(() => null) ?? Promise.resolve(null),
       ]);
       isFollowing = !!followRecord;
       isRequested = requestRecord?.status === 'PENDING';
@@ -857,7 +857,7 @@ export class AuthService {
     await this.db.followRequest.deleteMany({
       where: { OR: [{ requesterId: userId, targetId }, { requesterId: targetId, targetId: userId }] },
     });
-    await this.db.block.upsert({
+    await (this.db as any).block.upsert({
       where: { blockerId_blockedId: { blockerId: userId, blockedId: targetId } },
       update: {},
       create: { blockerId: userId, blockedId: targetId },
@@ -866,12 +866,12 @@ export class AuthService {
   }
 
   async unblockUser(userId: string, targetId: string) {
-    await this.db.block.deleteMany({ where: { blockerId: userId, blockedId: targetId } });
+    await (this.db as any).block.deleteMany({ where: { blockerId: userId, blockedId: targetId } });
     return { success: true, blocked: false };
   }
 
   async getBlockedUsers(userId: string) {
-    const blocks = await this.db.block.findMany({
+    const blocks = await (this.db as any).block.findMany({
       where: { blockerId: userId },
       include: {
         blocked: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
@@ -883,7 +883,7 @@ export class AuthService {
 
   async muteUser(userId: string, targetId: string, mutePosts: boolean, muteStories: boolean) {
     if (userId === targetId) throw new BadRequestException('You cannot mute yourself.');
-    await this.db.mute.upsert({
+    await (this.db as any).mute.upsert({
       where: { muterId_mutedId: { muterId: userId, mutedId: targetId } },
       update: { mutePosts, muteStories },
       create: { muterId: userId, mutedId: targetId, mutePosts, muteStories },
@@ -892,7 +892,7 @@ export class AuthService {
   }
 
   async unmuteUser(userId: string, targetId: string) {
-    await this.db.mute.deleteMany({ where: { muterId: userId, mutedId: targetId } });
+    await (this.db as any).mute.deleteMany({ where: { muterId: userId, mutedId: targetId } });
     return { success: true, muted: false };
   }
 
@@ -913,5 +913,37 @@ export class AuthService {
       where: { followingId: targetId, followerId: { in: myFollowingIds } },
     });
     return { success: true, data: targetFollowers.map((f: any) => f.follower), total };
+  }
+
+  async getNotificationPreferences(userId: string) {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { notificationPreferences: true },
+    });
+    const defaults = {
+      likes: true,
+      comments: true,
+      follows: true,
+      mentions: true,
+      directMessages: true,
+      reelLikes: true,
+      storyReplies: true,
+    };
+    const stored = (user?.notificationPreferences as Record<string, boolean> | null) ?? {};
+    return { success: true, data: { ...defaults, ...stored } };
+  }
+
+  async updateNotificationPreferences(userId: string, prefs: Record<string, boolean>) {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { notificationPreferences: true },
+    });
+    const current = (user?.notificationPreferences as Record<string, boolean> | null) ?? {};
+    const updated = { ...current, ...prefs };
+    await this.db.user.update({
+      where: { id: userId },
+      data: { notificationPreferences: updated as any },
+    });
+    return { success: true, data: updated };
   }
 }
