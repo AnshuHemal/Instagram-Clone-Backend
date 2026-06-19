@@ -638,21 +638,26 @@ export class ChatService {
    * emoji, the reaction is removed (toggle). Otherwise it is upserted.
    */
   async reactToMessage(messageId: string, userId: string, emoji: string) {
+    // Guard: messageReaction table may not exist yet if migration hasn't run
+    if (!(this.db as any).messageReaction) {
+      return { toggled: 'skipped', emoji, reason: 'Migration pending - run: npx prisma migrate dev' };
+    }
+
     // Check if the user already reacted with this emoji on this message
-    const existing = await this.db.messageReaction.findUnique({
+    const existing = await (this.db as any).messageReaction.findUnique({
       where: { messageId_userId: { messageId, userId } },
     });
 
     if (existing && existing.emoji === emoji) {
       // Same emoji → remove (toggle off)
-      await this.db.messageReaction.delete({
+      await (this.db as any).messageReaction.delete({
         where: { messageId_userId: { messageId, userId } },
       });
       return { toggled: 'removed', emoji };
     }
 
     // Upsert (create or update to new emoji)
-    const reaction = await this.db.messageReaction.upsert({
+    const reaction = await (this.db as any).messageReaction.upsert({
       where: { messageId_userId: { messageId, userId } },
       create: { messageId, userId, emoji },
       update: { emoji },
