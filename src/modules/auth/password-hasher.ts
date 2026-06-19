@@ -19,6 +19,7 @@ export class PasswordHasher {
     if (!salt || !hash) return false;
     const key = scryptSync(password, salt, 64);
     const keyBuffer = Buffer.from(hash, 'hex');
+    if (key.length !== keyBuffer.length) return false;
     return timingSafeEqual(key, keyBuffer);
   }
 }
