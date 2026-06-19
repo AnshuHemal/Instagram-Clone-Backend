@@ -29,11 +29,7 @@ export class DatabaseService
             ]
           : [{ emit: 'stdout', level: 'error' }],
       // Connection pool configuration optimized for Neon's serverless pooler
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
+      datasourceUrl: process.env.DATABASE_URL,
     });
 
     // Log all queries in development for debugging
