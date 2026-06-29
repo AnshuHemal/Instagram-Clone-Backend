@@ -180,13 +180,14 @@ All endpoints are prefixed with `/api`. JWT Bearer auth is required unless marke
 | `POST` | `/reels/:id/view` | JWT | Record view event (fire-and-forget, Redis-batched) |
 | `POST` | `/reels/:id/comment` | JWT | Add a comment to reel |
 | `GET` | `/reels/:id/comments` | Public | Get reel comments |
+| `GET` | `/reels/trending` | Public | Get top trending reels (likes + views descending) |
 
 ### 📖 Stories Module — `/api/stories`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/stories` | JWT | Create a story (image/video, 24h expiry) |
-| `GET` | `/stories` | JWT | Get active stories grouped by user |
+| `POST` | `/stories` | JWT | Create a story (supports `parentPostId`, `parentPostType` form-data fields) |
+| `GET` | `/stories` | JWT | Get active stories grouped by user (returns `parentPostId`, `parentPostType` link stickers) |
 | `POST` | `/stories/:id/view` | JWT | Mark story as viewed |
 | `GET` | `/stories/archive` | JWT | Get all own stories (archive) |
 | `POST` | `/stories/highlights` | JWT | Create a highlight collection |
