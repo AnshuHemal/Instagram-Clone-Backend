@@ -117,6 +117,26 @@ export class ChatController {
   }
 
   /**
+   * Update the theme of a conversation.
+   * PATCH /chat/conversations/:id/theme
+   */
+  @Patch('conversations/:id/theme')
+  async updateConversationTheme(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') conversationId: string,
+    @Body('theme') theme: string,
+  ) {
+    if (!theme) {
+      throw new BadRequestException('theme is required');
+    }
+    const result = await this.chatService.updateConversationTheme(conversationId, user.sub, theme);
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  /**
    * Upload chat media (image/video) to Cloudinary and return the secure URL.
    */
   @Post('upload')

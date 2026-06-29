@@ -210,6 +210,7 @@ export class ChatService {
           groupAvatar: conv.groupAvatar,
           createdAt: conv.createdAt,
           updatedAt: conv.updatedAt,
+          theme: conv.theme,
           partner: conv.isGroup ? null : partnerWithPresence,
           participants: conv.participants.map(p => ({
             id: p.user.id,
@@ -695,6 +696,14 @@ export class ChatService {
       return { toggled: 'skipped', emoji, reason: 'Migration pending - run: npx prisma migrate dev' };
     }
 
+    const message = await this.db.message.findUnique({
+      where: { id: messageId },
+      select: { conversationId: true },
+    });
+    if (!message) {
+      throw new BadRequestException('Message not found.');
+    }
+
     // Check if the user already reacted with this emoji on this message
     const existing = await (this.db as any).messageReaction.findUnique({
       where: { messageId_userId: { messageId, userId } },
@@ -705,6 +714,15 @@ export class ChatService {
       await (this.db as any).messageReaction.delete({
         where: { messageId_userId: { messageId, userId } },
       });
+
+      this.eventEmitter.emit('message.reaction.updated', {
+        messageId,
+        userId,
+        emoji,
+        toggled: 'removed',
+        conversationId: message.conversationId,
+      });
+
       return { toggled: 'removed', emoji };
     }
 
@@ -713,6 +731,14 @@ export class ChatService {
       where: { messageId_userId: { messageId, userId } },
       create: { messageId, userId, emoji },
       update: { emoji },
+    });
+
+    this.eventEmitter.emit('message.reaction.updated', {
+      messageId,
+      userId,
+      emoji,
+      toggled: 'added',
+      conversationId: message.conversationId,
     });
 
     return { toggled: 'added', emoji, reaction };
@@ -741,5 +767,37 @@ export class ChatService {
     });
 
     return { success: true, messageId };
+  }
+
+  /**
+   * Updates the theme of a conversation thread.
+   */
+  async updateConversationTheme(conversationId: string, userId: string, theme: string) {
+    const conv = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      include: { participants: true },
+    });
+    if (!conv) {
+      throw new BadRequestException('Conversation not found.');
+    }
+
+    // Verify user is a participant
+    const isMember = conv.participants.some((p) => p.userId === userId);
+    if (!isMember) {
+      throw new BadRequestException('You are not a participant in this conversation.');
+    }
+
+    const updated = await this.db.conversation.update({
+      where: { id: conversationId },
+      data: { theme },
+      select: { id: true, theme: true },
+    });
+
+    this.eventEmitter.emit('conversation.theme.updated', {
+      conversationId,
+      theme,
+    });
+
+    return updated;
   }
 }

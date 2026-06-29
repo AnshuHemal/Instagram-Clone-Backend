@@ -308,4 +308,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       lastMessageSenderId: payload.senderId,
     });
   }
+
+  @OnEvent('message.reaction.updated')
+  handleMessageReactionUpdated(payload: { messageId: string; userId: string; emoji: string; toggled: 'added' | 'removed'; conversationId: string }) {
+    this.logger.debug(`Broadcasting message reaction to conversation room: ${payload.conversationId}`);
+    this.server.to(payload.conversationId).emit('messageReactionUpdate', payload);
+  }
+
+  @OnEvent('conversation.theme.updated')
+  handleConversationThemeUpdated(payload: { conversationId: string; theme: string }) {
+    this.logger.debug(`Broadcasting theme update to conversation room: ${payload.conversationId}`);
+    this.server.to(payload.conversationId).emit('conversationThemeUpdate', payload);
+  }
 }

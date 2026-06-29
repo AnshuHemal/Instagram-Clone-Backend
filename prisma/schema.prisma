@@ -363,6 +363,7 @@ model Conversation {
   isGroup      Boolean                   @default(false)
   groupName    String?                   @db.VarChar(100)
   groupAvatar  String?
+  theme        String?                   @db.VarChar(50)
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt
   participants ConversationParticipant[]
