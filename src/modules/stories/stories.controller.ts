@@ -36,8 +36,10 @@ export class StoriesController {
   async createStory(
     @CurrentUser() user: JwtPayload,
     @UploadedFile() file: Express.Multer.File,
+    @Body('parentPostId') parentPostId?: string,
+    @Body('parentPostType') parentPostType?: string,
   ) {
-    return this.storiesService.createStory(user.sub, file);
+    return this.storiesService.createStory(user.sub, file, parentPostId, parentPostType);
   }
 
   @Get()

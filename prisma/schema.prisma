@@ -421,12 +421,14 @@ model MessageReaction {
 }
 
 model Story {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @db.Uuid
-  mediaUrl  String
-  mediaType String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @db.Uuid
+  mediaUrl       String
+  mediaType      String
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  parentPostId   String?  @db.Uuid
+  parentPostType String?  @db.VarChar(20)
 
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   viewers   StoryViewer[]

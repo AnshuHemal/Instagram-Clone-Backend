@@ -38,7 +38,12 @@ export class StoriesService {
    * Upload a story media buffer to Cloudinary and create a Story record.
    * Stories expire in exactly 24 hours.
    */
-  async createStory(userId: string, file: Express.Multer.File) {
+  async createStory(
+    userId: string,
+    file: Express.Multer.File,
+    parentPostId?: string,
+    parentPostType?: string,
+  ) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -73,6 +78,8 @@ export class StoriesService {
           mediaUrl: uploadResult.secure_url,
           mediaType: isVideo ? 'VIDEO' : 'IMAGE',
           expiresAt,
+          parentPostId: parentPostId || null,
+          parentPostType: parentPostType || null,
         },
         include: {
           user: {
@@ -165,6 +172,8 @@ export class StoriesService {
         mediaType: story.mediaType,
         createdAt: story.createdAt,
         isSeen: wasViewed,
+        parentPostId: story.parentPostId || undefined,
+        parentPostType: story.parentPostType || undefined,
       });
     }
 
