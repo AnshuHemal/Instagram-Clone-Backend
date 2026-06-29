@@ -2,12 +2,14 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { ChatPresenceService } from './chat-presence.service';
 import { v2 as cloudinary } from 'cloudinary';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class ChatService {
   constructor(
     private readonly db: DatabaseService,
     private readonly presenceService: ChatPresenceService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -406,6 +408,44 @@ export class ChatService {
       ...message,
       reference,
     };
+  }
+
+  /**
+   * Sends a story reply or quick emoji reaction, creating a conversation if needed,
+   * saving the message, and emitting a message.created event for real-time WebSocket broadcast.
+   */
+  async sendStoryReply(
+    senderId: string,
+    storyId: string,
+    targetUserId: string,
+    text?: string,
+    emoji?: string,
+  ) {
+    // 1. Get or create a 1-to-1 conversation with targetUserId
+    const conversation = await this.getOrCreateConversation(senderId, targetUserId);
+
+    // 2. Determine the message content
+    const msgText = emoji || text || 'Reacted to your story';
+
+    // 3. Save message referencing the story
+    const message = await this.saveMessage(
+      conversation.id,
+      senderId,
+      msgText,
+      undefined,
+      'story',
+      storyId,
+      storyId,
+    );
+
+    // 4. Emit the event so ChatGateway handles WebSocket broadcasting
+    this.eventEmitter.emit('message.created', {
+      message,
+      conversationId: conversation.id,
+      senderId,
+    });
+
+    return message;
   }
 
   /**

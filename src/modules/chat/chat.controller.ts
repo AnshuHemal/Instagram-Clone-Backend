@@ -157,6 +157,34 @@ export class ChatController {
   }
 
   /**
+   * Send a story reply or quick emoji reaction.
+   * POST /chat/story-reply
+   */
+  @Post('story-reply')
+  async sendStoryReply(
+    @CurrentUser() user: JwtPayload,
+    @Body('storyId') storyId: string,
+    @Body('targetUserId') targetUserId: string,
+    @Body('text') text?: string,
+    @Body('emoji') emoji?: string,
+  ) {
+    if (!storyId || !targetUserId) {
+      throw new BadRequestException('storyId and targetUserId are required.');
+    }
+    const result = await this.chatService.sendStoryReply(
+      user.sub,
+      storyId,
+      targetUserId,
+      text,
+      emoji,
+    );
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  /**
    * Delete (soft-delete) a message.
    * DELETE /chat/messages/:id
    */

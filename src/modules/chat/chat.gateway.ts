@@ -292,4 +292,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.debug(`Broadcasting notification to room: ${recipientRoom}`);
     this.server.to(recipientRoom).emit('notificationReceived', notification);
   }
+
+  @OnEvent('message.created')
+  handleMessageCreated(payload: { message: any; conversationId: string; senderId: string }) {
+    this.logger.debug(`Broadcasting message over event-emitter to room: ${payload.conversationId}`);
+    
+    // Broadcast the message to the conversation room
+    this.server.to(payload.conversationId).emit('messageReceived', payload.message);
+
+    // Also trigger global inbox update notifications for participants
+    this.server.emit('inboxUpdated', {
+      conversationId: payload.conversationId,
+      lastMessage: payload.message.mediaUrl ? 'Sent a photo' : (payload.message.text || 'Shared a message'),
+      lastMessageTime: payload.message.createdAt,
+      lastMessageSenderId: payload.senderId,
+    });
+  }
 }
