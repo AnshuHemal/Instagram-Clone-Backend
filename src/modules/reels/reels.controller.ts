@@ -147,6 +147,22 @@ export class ReelsController {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // GET /api/reels/trending  — Top trending reels for in-feed carousel
+  // ──────────────────────────────────────────────────────────────────────────
+
+  @Get('trending')
+  @SkipAuth()
+  @ApiOperation({ summary: 'Get top trending reels for the in-feed carousel widget' })
+  @ApiResponse({ status: 200, description: 'Trending reels returned' })
+  async getTrendingReels(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limitStr?: string,
+  ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 10;
+    return this.reelsService.getTrendingReels(user?.sub, limit);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // GET /api/reels/sse/:id  — Server-Sent Events (real-time status)
   // ──────────────────────────────────────────────────────────────────────────
 

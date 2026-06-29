@@ -564,4 +564,41 @@ export class ReelsService {
         })),
     };
   }
+
+  /**
+   * Returns the top trending reels ordered by combined likes + views score.
+   * Used to populate the in-feed Trending Reels carousel widget.
+   */
+  async getTrendingReels(userId: string | undefined, limit = 10) {
+    const reels = await this.repo.db.reel.findMany({
+      where: {
+        status: 'READY',
+        isDeleted: false,
+      },
+      orderBy: [
+        { likesCount: 'desc' },
+        { viewsCount: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      take: limit,
+      include: {
+        user: {
+          select: {
+            id:          true,
+            username:    true,
+            displayName: true,
+            avatarUrl:   true,
+            isVerified:  true,
+          },
+        },
+      },
+    });
+
+    const formatted = reels.map((reel: any) => this.formatReelResponse(reel));
+
+    return {
+      success: true,
+      data: formatted,
+    };
+  }
 }
